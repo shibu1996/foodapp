@@ -964,6 +964,7 @@ export default function CheckoutPage() {
                       Use Current Location
                     </button>
 
+                    {/* @ts-ignore - Google Maps API types not fully compatible with React 19 */}
                     <GoogleMap
                       mapContainerStyle={mapContainerStyle}
                       center={center}
@@ -976,6 +977,7 @@ export default function CheckoutPage() {
                         fullscreenControl: true,
                       }}
                     >
+                      {/* @ts-ignore - Google Maps API types not fully compatible with React 19 */}
                       <Marker
                         position={markerPosition}
                         draggable={true}
@@ -1461,24 +1463,6 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
-
-      <style jsx global>{`
-        @keyframes scaleIn {
-          from {
-            transform: scale(0.9);
-            opacity: 0;
-          }
-          to {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-        
-        /* Hide scrollbar for webkit browsers (Chrome, Safari) */
-        .overflow-y-auto::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
     </div>
   );
 }
