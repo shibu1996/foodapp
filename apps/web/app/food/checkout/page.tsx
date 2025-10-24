@@ -1175,7 +1175,7 @@ export default function CheckoutPage() {
               {/* Cart Items */}
               <div className="space-y-2 mb-5 max-h-60 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {cart.map((item, index) => (
-                  <div key={index} className="flex items-start gap-2 pb-2 border-b" style={{ borderColor: '#E5E7EB' }}>
+                  <div key={`${item.productId || item.id}-${item.type}-${index}`} className="flex items-start gap-2 pb-2 border-b" style={{ borderColor: '#E5E7EB' }}>
                     <div className="flex-1">
                       <p className="text-xs font-bold mb-0.5" style={{ color: '#0E1214' }}>
                         {item.name || item.productName}
