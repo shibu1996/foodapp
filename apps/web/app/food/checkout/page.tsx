@@ -726,9 +726,9 @@ export default function CheckoutPage() {
                   
                   {/* Saved Addresses List */}
                 <div className="space-y-3 overflow-y-auto" style={{ maxHeight: '400px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {addresses.map((address) => (
+                  {addresses.map((address, index) => (
                     <div
-                      key={address._id}
+                      key={address._id || `address-${index}`}
                       onClick={() => {
                         setSelectedAddressId(address._id);
                         setShowAllAddresses(false);
