@@ -34,10 +34,10 @@ export function ProductCard({ product, onAddToCart, cart = [] }: ProductCardProp
 
   const productId = product._id || product.id || '';
 
-  // Get quantity from cart
+  // Get quantity from cart (only for one-time items, not subscriptions)
   const cartItem = cart.find(item => {
     const itemId = item._id || item.id;
-    return itemId === productId;
+    return itemId === productId && item.type !== 'subscription';
   });
   const quantity = cartItem?.quantity || 0;
 

@@ -12,6 +12,7 @@ import { QuickActions } from './components/QuickActions';
 import { CategoryTabs } from './components/CategoryTabs';
 import { ProductCard } from './components/ProductCard';
 import { getFoodImage } from './utils/images';
+import { FloatingCart } from '../../components/FloatingCart';
 
 // API Base URL
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -25,7 +26,7 @@ export default function HomePage() {
   const [cart, setCart] = useState<any[]>([]);
   const [currentLocation, setCurrentLocation] = useState('Sector 18, Noida');
   const [showLocationModal, setShowLocationModal] = useState(false);
-  const [showCartModal, setShowCartModal] = useState(false);
+  const [cartLoaded, setCartLoaded] = useState(false); // Track if cart is loaded from localStorage
   
   // New state for API data
   const [categories, setCategories] = useState<any[]>([]);
@@ -59,24 +60,61 @@ export default function HomePage() {
     if (savedCart) {
       try {
         const cartData = JSON.parse(savedCart);
-        setCart(cartData);
-        console.log('Loaded cart from localStorage:', cartData);
+        // Filter out invalid items on load
+        const validCart = cartData.filter((item: any) => {
+          if (item.type === 'subscription') {
+            return item.productName || item.name;
+          } else {
+            return (item.quantity && item.quantity > 0) && (item.name || item.productName);
+          }
+        });
+        setCart(validCart);
+        console.log('✅ Loaded cart from localStorage:', validCart.length, 'valid items out of', cartData.length, 'total');
+        
+        // If we filtered out items, update localStorage
+        if (validCart.length !== cartData.length) {
+          localStorage.setItem('cart', JSON.stringify(validCart));
+        }
       } catch (error) {
         console.error('Error loading cart:', error);
+        setCart([]);
       }
     }
+    // Mark cart as loaded
+    setCartLoaded(true);
   }, []);
 
-  // Monitor cart changes and save to localStorage
+  // Monitor cart changes and save to localStorage (only after initial load)
   useEffect(() => {
-    console.log('Cart updated:', cart.length, 'items', cart.map(item => ({
+    if (!cartLoaded) {
+      // Skip saving on first render before cart is loaded from localStorage
+      return;
+    }
+    
+    // Filter out invalid items before saving
+    const validCart = cart.filter(item => {
+      if (item.type === 'subscription') {
+        return item.productName || item.name;
+      } else {
+        return (item.quantity && item.quantity > 0) && (item.name || item.productName);
+      }
+    });
+    
+    console.log('💾 Saving cart to localStorage:', validCart.length, 'valid items', validCart.map(item => ({
       id: item._id || item.id,
-      name: item.name,
+      name: item.name || item.productName,
+      type: item.type,
       quantity: item.quantity
     })));
-    // Save cart to localStorage
-    localStorage.setItem('cart', JSON.stringify(cart));
-  }, [cart]);
+    
+    // Save valid cart to localStorage
+    localStorage.setItem('cart', JSON.stringify(validCart));
+    
+    // If we filtered out items, update state
+    if (validCart.length !== cart.length) {
+      setCart(validCart);
+    }
+  }, [cart, cartLoaded]);
 
   // Fetch categories from API
   useEffect(() => {
@@ -127,14 +165,14 @@ export default function HomePage() {
   };
 
   const addToCart = (product: any, quantity: number = 1) => {
-    console.log('Adding to cart:', { 
+    console.log('🛒 Adding to cart:', { 
       productId: product._id || product.id, 
       productName: product.name, 
       quantity,
       currentCartSize: cart.length 
     });
 
-    // If quantity is 0, remove from cart
+    // If quantity is 0 or less, remove from cart
     if (quantity <= 0) {
       removeFromCart(product._id || product.id);
       return;
@@ -143,28 +181,44 @@ export default function HomePage() {
     const productId = product._id || product.id;
     const existingItem = cart.find(item => {
       const itemId = item._id || item.id;
-      return itemId === productId;
+      return itemId === productId && item.type !== 'subscription'; // Don't match subscription items
     });
     
+    let newCart;
     if (existingItem) {
       // Update quantity
-      console.log('Updating existing item in cart');
-      setCart(cart.map(item => {
+      console.log('✏️ Updating existing item in cart');
+      newCart = cart.map(item => {
         const itemId = item._id || item.id;
-        return itemId === productId ? { ...item, quantity: quantity } : item;
-      }));
+        return itemId === productId && item.type !== 'subscription' ? { ...item, quantity: quantity } : item;
+      });
     } else {
-      // Add new item
-      console.log('Adding new item to cart');
-      setCart([...cart, { ...product, quantity: quantity }]);
+      // Add new item with type marker
+      console.log('➕ Adding new item to cart');
+      newCart = [...cart, { ...product, quantity: quantity, type: 'onetime' }];
     }
+    
+    // Update state and localStorage together
+    setCart(newCart);
+    localStorage.setItem('cart', JSON.stringify(newCart));
+    
+    // Dispatch event for FloatingCart sync
+    window.dispatchEvent(new Event('cartUpdated'));
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(cart.filter(item => {
+    console.log('🗑️ Removing from cart:', productId);
+    const newCart = cart.filter(item => {
       const itemId = item._id || item.id;
       return itemId !== productId;
-    }));
+    });
+    
+    // Update state and localStorage together
+    setCart(newCart);
+    localStorage.setItem('cart', JSON.stringify(newCart));
+    
+    // Dispatch event for FloatingCart sync
+    window.dispatchEvent(new Event('cartUpdated'));
   };
 
   const handleSearch = (query: string) => {
@@ -504,194 +558,12 @@ export default function HomePage() {
               ))}
             </div>
           )}
-        </div>
+          </div>
         </div>
       </main>
 
-      {/* Floating Cart - Crimson Jet Theme */}
-      {cart.length > 0 && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <button
-            onClick={() => setShowCartModal(true)}
-            className="text-white px-5 py-3 rounded-lg transition-all duration-300 flex items-center gap-2.5 relative"
-            style={{ 
-              backgroundColor: '#E11D48',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.35)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#BE123C';
-              e.currentTarget.style.boxShadow = '0 25px 60px rgba(0,0,0,0.45)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#E11D48';
-              e.currentTarget.style.boxShadow = '0 20px 50px rgba(0,0,0,0.35)';
-            }}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <div className="text-left">
-              <div className="text-xs font-medium">{cart.length} items</div>
-              <div className="text-sm font-bold">View Cart</div>
-            </div>
-            <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-lg border-2"
-              style={{
-                backgroundColor: '#F59E0B',
-                color: '#0E1214',
-                borderColor: '#F59E0B'
-              }}
-            >
-              {cart.length}
-            </div>
-          </button>
-        </div>
-      )}
-
-      {/* Cart Modal */}
-      {showCartModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowCartModal(false)}>
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: '#E5E7EB' }}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}>
-                  <svg className="w-4 h-4" style={{ color: '#E11D48' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-base font-bold" style={{ color: '#0E1214' }}>Your Cart</h2>
-                  <p className="text-xs" style={{ color: '#6B7280' }}>{cart.length} items</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowCartModal(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
-                style={{ backgroundColor: '#F3F4F6', color: '#6B7280' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#FEE2E2';
-                  e.currentTarget.style.color = '#E11D48';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#F3F4F6';
-                  e.currentTarget.style.color = '#6B7280';
-                }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Cart Items */}
-            <div className="overflow-y-auto max-h-[50vh] px-5 py-3">
-              {cart.map((item, index) => (
-                <div key={index} className="flex gap-3 py-3 border-b last:border-0" style={{ borderColor: '#F3F4F6' }}>
-                  {/* Image */}
-                  <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0" style={{ backgroundColor: '#F3F4F6' }}>
-                    <img
-                      src={item.image || getFoodImage(item.name)}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  {/* Details */}
-                  <div className="flex-1">
-                    <h3 className="font-bold text-sm mb-0.5" style={{ color: '#0E1214' }}>{item.name}</h3>
-                    <p className="text-xs mb-2" style={{ color: '#6B7280' }}>{item.tagline || item.description}</p>
-                    <div className="flex items-center justify-between">
-                      <div className="font-bold text-base" style={{ color: '#E11D48' }}>
-                        ₹{item.prices?.oneTime || item.price}
-                      </div>
-                      
-                      {/* Quantity Selector */}
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            const newQuantity = (item.quantity || 1) - 1;
-                            if (newQuantity === 0) {
-                              removeFromCart(item._id || item.id);
-                            } else {
-                              addToCart(item, newQuantity);
-                            }
-                          }}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-all"
-                          style={{ backgroundColor: '#FEF2F2', color: '#E11D48' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FEE2E2'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FEF2F2'}
-                        >
-                          −
-                        </button>
-                        <span className="font-bold min-w-[20px] text-center text-sm" style={{ color: '#0E1214' }}>
-                          {item.quantity || 1}
-                        </span>
-                        <button
-                          onClick={() => addToCart(item, (item.quantity || 1) + 1)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-all"
-                          style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BE123C'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E11D48'}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Remove Button */}
-                  <button
-                    onClick={() => removeFromCart(item._id || item.id)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all"
-                    style={{ backgroundColor: '#FEF2F2', color: '#E11D48' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#FEE2E2';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#FEF2F2';
-                    }}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-              </div>
-            ))}
-            </div>
-
-            {/* Footer */}
-            <div className="px-5 py-3 border-t" style={{ borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' }}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-semibold text-sm" style={{ color: '#6B7280' }}>Total Amount:</span>
-                <span className="font-bold text-lg" style={{ color: '#E11D48' }}>
-                  ₹{cart.reduce((sum, item) => sum + ((item.prices?.oneTime || item.price) * (item.quantity || 1)), 0)}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  setShowCartModal(false);
-                  // Check if user is logged in
-                  const token = localStorage.getItem('token');
-                  if (token && user) {
-                    // User is logged in, proceed to checkout
-                    router.push('/food/checkout');
-                  } else {
-                    // User not logged in, redirect to login
-                    localStorage.setItem('redirectAfterLogin', '/food/checkout');
-                    router.push('/auth');
-                  }
-                }}
-                className="w-full py-3 rounded-xl font-bold text-sm transition-all"
-                style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BE123C'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E11D48'}
-              >
-                Proceed to Checkout
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Floating Cart Component */}
+      <FloatingCart />
 
       {/* Location Modal */}
       <LocationModal

@@ -87,17 +87,48 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const saved = localStorage.getItem('subscriptionState');
     if (saved) {
-      setState(JSON.parse(saved));
+      const parsedState = JSON.parse(saved);
+      console.log('📂 Loading from localStorage:', {
+        productId: parsedState.productId,
+        productName: parsedState.productName,
+        hasImage: !!parsedState.productImage,
+        hasDescription: !!parsedState.productDescription,
+        basePrice: parsedState.basePrice,
+        duration: parsedState.duration
+      });
+      setState(parsedState);
+    } else {
+      console.log('📂 No saved subscription state in localStorage');
     }
   }, []);
 
   // Save to localStorage on state change
   useEffect(() => {
+    console.log('💾 Saving to localStorage:', {
+      productId: state.productId,
+      productName: state.productName,
+      hasImage: !!state.productImage,
+      hasDescription: !!state.productDescription,
+      basePrice: state.basePrice,
+      duration: state.duration
+    });
     localStorage.setItem('subscriptionState', JSON.stringify(state));
   }, [state]);
 
   const updateState = (updates: Partial<SubscriptionState>) => {
-    setState((prev) => ({ ...prev, ...updates }));
+    console.log('🔄 Subscription Context - Updating state:', updates);
+    setState((prev) => {
+      const newState = { ...prev, ...updates };
+      console.log('✅ New state after update:', {
+        productId: newState.productId,
+        productName: newState.productName,
+        hasImage: !!newState.productImage,
+        hasDescription: !!newState.productDescription,
+        basePrice: newState.basePrice,
+        duration: newState.duration
+      });
+      return newState;
+    });
   };
 
   const resetState = () => {

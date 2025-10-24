@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
 import { apiClient } from '@restaurant-app/api-client';
@@ -64,14 +64,18 @@ export default function SummaryPage() {
     try {
       setAddingToCart(true);
       
-      // Prepare complete subscription data
-      const subscriptionData = {
+      // Prepare complete subscription data with type marker
+      const subscriptionItem = {
         _id: `sub_${Date.now()}`, // Temporary ID
+        type: 'subscription', // Mark as subscription
         productId: state.productId,
         productName: state.productName,
+        name: state.productName, // For consistency with one-time items
         productImage: state.productImage,
+        image: state.productImage, // For consistency
         productDescription: state.productDescription,
         basePrice: state.basePrice,
+        price: finalTotal, // Total price for display
         duration: state.duration,
         deliverySlot: state.deliverySlot,
         startDate: state.startDate,
@@ -83,25 +87,28 @@ export default function SummaryPage() {
         discount: state.discount || 0,
         subtotal: subtotal,
         totalAmount: finalTotal,
+        quantity: 1, // For consistency with one-time items
         addedAt: new Date().toISOString(),
       };
 
-      // Get existing subscription cart from localStorage
-      const existingCart = localStorage.getItem('subscriptionCart');
-      let cart = existingCart ? JSON.parse(existingCart) : { items: [], totalAmount: 0 };
+      // Get existing unified cart from localStorage (same cart for one-time & subscriptions)
+      const existingCart = localStorage.getItem('cart');
+      let cart = existingCart ? JSON.parse(existingCart) : [];
 
-      // Add new subscription to cart
-      cart.items.push(subscriptionData);
-      cart.totalAmount = cart.items.reduce((sum: number, item: any) => sum + (item.totalAmount || 0), 0);
+      // Add new subscription to the unified cart
+      cart.push(subscriptionItem);
 
-      // Save updated cart
-      localStorage.setItem('subscriptionCart', JSON.stringify(cart));
+      // Save updated unified cart
+      localStorage.setItem('cart', JSON.stringify(cart));
+      
+      // Dispatch event to update FloatingCart
+      window.dispatchEvent(new Event('cartUpdated'));
       
       // Show success state
       setAddedToCart(true);
       
-      // Optional: Show floating notification
-      console.log('Subscription added to cart successfully!', subscriptionData);
+      // Log success
+      console.log('✅ Subscription added to unified cart successfully!', subscriptionItem);
     } catch (error) {
       console.error('Error adding to cart:', error);
       alert('Failed to add to cart');
@@ -139,6 +146,41 @@ export default function SummaryPage() {
   };
 
   const selectedTimeSlot = getTimeSlot(state.deliverySlot || 'lunch');
+
+  // Debug log to check if product details are set
+  useEffect(() => {
+    // Check localStorage directly
+    const savedState = localStorage.getItem('subscriptionState');
+    if (savedState) {
+      const parsed = JSON.parse(savedState);
+      console.log('💾 localStorage Check:', {
+        productId: parsed.productId,
+        productName: parsed.productName,
+        hasImage: !!parsed.productImage,
+        hasDescription: !!parsed.productDescription,
+        basePrice: parsed.basePrice
+      });
+    }
+    
+    console.log('📋 Summary Page - State from Context:', {
+      productId: state.productId,
+      productName: state.productName,
+      productImage: state.productImage ? state.productImage.substring(0, 50) + '...' : 'MISSING',
+      productDescription: state.productDescription ? state.productDescription.substring(0, 50) + '...' : 'MISSING',
+      basePrice: state.basePrice,
+      duration: state.duration
+    });
+    
+    // If essential data is missing, redirect to home page
+    if (!state.productName || !state.basePrice) {
+      console.warn('⚠️ Missing product data! Redirecting to home page...');
+      // Small delay to allow user to see the warning
+      const timer = setTimeout(() => {
+        router.push('/food/home');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [state.productId, state.productName, state.productImage, state.productDescription, state.basePrice, state.duration, router]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -201,28 +243,46 @@ export default function SummaryPage() {
               </div>
 
               {/* Product Image and Name */}
+              {(!state.productName || !state.productImage || !state.productDescription) && (
+                <div className="mb-3 p-4 rounded-lg" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2' }}>
+                  <p className="text-sm font-bold mb-1" style={{ color: '#E11D48' }}>
+                    ⚠️ Product details missing
+                  </p>
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                    Redirecting to home page in 2 seconds... Please start the subscription flow from a product page.
+                  </p>
+                </div>
+              )}
+              
               <div className="flex gap-4 mb-4 p-3 rounded-lg" style={{ background: '#F9FAFB' }}>
-                {state.productImage && (
-                  <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden" style={{ background: '#F3F4F6' }}>
+                <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden" style={{ background: '#F3F4F6' }}>
+                  {state.productImage ? (
                     <img 
                       src={state.productImage} 
                       alt={state.productName || 'Product'} 
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error('Failed to load image:', state.productImage);
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center text-3xl">🍱</div>';
+                      }}
                     />
-                  </div>
-                )}
-                <div className="flex-1">
-                  <h4 className="text-base font-bold mb-1" style={{ color: '#0E1214' }}>
-                    {state.productName || 'Daily Meal Subscription'}
-                  </h4>
-                  {state.productDescription && (
-                    <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
-                      {state.productDescription}
-                    </p>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-3xl">
+                      🍱
+                    </div>
                   )}
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-base font-bold mb-1" style={{ color: state.productName ? '#0E1214' : '#9CA3AF' }}>
+                    {state.productName || '⚠️ Product name not available'}
+                  </h4>
+                  <p className="text-xs mb-2" style={{ color: state.productDescription ? '#6B7280' : '#9CA3AF' }}>
+                    {state.productDescription || '⚠️ Description not available'}
+                  </p>
                   <div className="flex items-center gap-2">
                     <span className="text-lg font-bold" style={{ color: '#E11D48' }}>
-                      ₹{basePrice}
+                      ₹{basePrice || 0}
                     </span>
                     <span className="text-xs" style={{ color: '#6B7280' }}>per day</span>
                   </div>
@@ -761,64 +821,41 @@ export default function SummaryPage() {
                 <>
                   {/* Success Message */}
                   <div className="mb-4 p-4 rounded-xl" style={{ background: 'linear-gradient(to right, #F0FDF4, #ECFDF5)', border: '1px solid #BBF7D0' }}>
-                    <div className="flex items-center gap-3 mb-3">
+                    <div className="flex items-center gap-3">
                       <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#10B981' }}>
                         <svg className="w-6 h-6" fill="none" stroke="#FFFFFF" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
                       <div className="flex-1">
-                        <h4 className="text-sm font-bold mb-0.5" style={{ color: '#166534' }}>
+                        <h4 className="text-sm font-bold" style={{ color: '#166534' }}>
                           ✅ Added to Cart Successfully!
                         </h4>
-                        <p className="text-xs" style={{ color: '#15803D' }}>
-                          Your subscription has been saved to cart
-                        </p>
                       </div>
                     </div>
-                  </div>
+              </div>
 
-                  {/* Action Buttons After Adding */}
-                  <div className="flex gap-2.5 mb-4">
-                    <button
-                      onClick={() => router.push('/food/home')}
-                      className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
-                      style={{ 
-                        background: '#FFFFFF',
-                        color: '#E11D48',
-                        border: '2px solid #E11D48'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#FEF2F2';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#FFFFFF';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      ➕ Add More Products
-                    </button>
-
-                    <button
-                      onClick={() => router.push('/food/subscription-cart')}
-                      className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
-                      style={{ 
-                        background: '#E11D48',
-                        color: '#FFFFFF'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#BE123C';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#E11D48';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      🛒 View Cart
-                    </button>
-                  </div>
+                  {/* Action Button After Adding - Only "Add More Products" */}
+                  <button
+                    onClick={() => router.push('/food/home')}
+                    className="w-full py-3 rounded-xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 mb-4"
+                    style={{ 
+                      background: '#E11D48',
+                      color: '#FFFFFF'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#BE123C';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(225, 29, 72, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#E11D48';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  >
+                    Add More Products
+                  </button>
                 </>
               )}
 

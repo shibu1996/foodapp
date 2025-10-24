@@ -26,8 +26,14 @@ export default function DurationPage() {
   const currentPrice = state.basePrice || urlPrice;
   const currentProductName = state.productName || urlProductName;
 
+  // Track if data has been loaded
+  const [dataLoaded, setDataLoaded] = useState(false);
+
   useEffect(() => {
-    if (!searchParams) return;
+    if (!searchParams) {
+      console.log('⚠️ No search params available');
+      return;
+    }
     
     const productId = searchParams.get('product');
     const productName = searchParams.get('name');
@@ -35,15 +41,51 @@ export default function DurationPage() {
     const description = searchParams.get('description');
     const image = searchParams.get('image');
     
-    // Only update if productId is different from current state
-    if (productId && productName && price && productId !== state.productId) {
-      updateState({
+    console.log('📥 Duration Page - URL Params:', {
+      productId,
+      productName,
+      price,
+      hasDescription: !!description,
+      hasImage: !!image,
+      descriptionLength: description?.length || 0,
+      imageLength: image?.length || 0
+    });
+    
+    // Update product details from URL params
+    if (productId && productName && price) {
+      const updates: any = {
         productId,
         productName,
         basePrice: parseInt(price),
-        ...(description && { productDescription: decodeURIComponent(description) }),
-        ...(image && { productImage: decodeURIComponent(image) }),
-      } as any);
+      };
+      
+      // Always update description and image if provided in URL
+      if (description && description !== 'undefined' && description !== '') {
+        const decodedDesc = decodeURIComponent(description);
+        updates.productDescription = decodedDesc;
+        console.log('📝 Setting description:', decodedDesc.substring(0, 50) + '...');
+      }
+      
+      if (image && image !== 'undefined' && image !== '') {
+        const decodedImage = decodeURIComponent(image);
+        updates.productImage = decodedImage;
+        console.log('🖼️ Setting image:', decodedImage.substring(0, 50) + '...');
+      }
+      
+      console.log('💾 Updating subscription state with:', {
+        productId: updates.productId,
+        productName: updates.productName,
+        basePrice: updates.basePrice,
+        hasDescription: !!updates.productDescription,
+        hasImage: !!updates.productImage
+      });
+      
+      updateState(updates);
+      setDataLoaded(true); // Mark data as loaded
+    } else {
+      console.warn('⚠️ Missing required params:', { productId, productName, price });
+      alert('Invalid subscription link. Redirecting to home page...');
+      router.push('/food/home');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -71,7 +113,7 @@ export default function DurationPage() {
   const handleNext = () => {
     const finalDuration = isCustom ? parseInt(customDays) : selectedDuration;
     
-    console.log('handleNext called', { isCustom, customDays, selectedDuration, finalDuration });
+    console.log('🚀 handleNext called', { isCustom, customDays, selectedDuration, finalDuration, dataLoaded });
     
     if (isCustom && (isNaN(finalDuration) || finalDuration < 3 || finalDuration > 90)) {
       alert('Please enter a valid number of days (3-90)');
@@ -83,17 +125,57 @@ export default function DurationPage() {
       return;
     }
 
-    console.log('Updating state with duration:', finalDuration);
+    // Get product data from URL params as fallback
+    const productId = searchParams?.get('product') || state.productId;
+    const productName = searchParams?.get('name') || state.productName;
+    const price = searchParams?.get('price') || state.basePrice.toString();
+    const description = searchParams?.get('description');
+    const image = searchParams?.get('image');
+
+    // Verify essential product data is available (from either state or URL)
+    if (!productName || !productId) {
+      console.error('❌ Missing product data before navigation!', {
+        productId: productId,
+        productName: productName,
+        stateProductId: state.productId,
+        stateProductName: state.productName,
+        hasSearchParams: !!searchParams
+      });
+      alert('Product data missing. Please try again from the product page.');
+      router.push('/food/home');
+      return;
+    }
+
+    const productDescription = description && description !== 'undefined' && description !== '' 
+      ? decodeURIComponent(description) 
+      : state.productDescription;
     
-    // Ensure basePrice is set (use currentPrice as fallback)
+    const productImage = image && image !== 'undefined' && image !== '' 
+      ? decodeURIComponent(image) 
+      : state.productImage;
+
+    console.log('✅ Product data verified:', {
+      productId,
+      productName,
+      hasImage: !!productImage,
+      hasDescription: !!productDescription,
+      basePrice: currentPrice
+    });
+    
+    // Update state with all necessary data (ensuring nothing is lost)
     updateState({
       duration: finalDuration,
       isCustomDuration: isCustom,
       maxSkips: getSkipAllowance(finalDuration),
-      basePrice: currentPrice, // Ensure price is set
+      basePrice: currentPrice,
+      // Use data from URL as primary source, state as fallback
+      productId: productId,
+      productName: productName,
+      productImage: productImage,
+      productDescription: productDescription,
     });
 
-    console.log('Navigating to timeslot');
+    console.log('🎯 Navigating to timeslot with complete data');
     router.push('/food/subscribe/timeslot');
   };
 
