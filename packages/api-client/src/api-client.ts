@@ -57,6 +57,37 @@ export class APIClient {
     const response = await this.client.get<AuthResponse>('/api/auth/me');
     return response.data;
   }
+
+  // Subscription Cart Methods
+  async addToSubscriptionCart(data: any): Promise<any> {
+    const response = await this.client.post('/api/subscription-cart/add', data);
+    return response.data;
+  }
+
+  async getSubscriptionCart(): Promise<any> {
+    const response = await this.client.get('/api/subscription-cart');
+    return response.data;
+  }
+
+  async removeFromSubscriptionCart(itemId: string): Promise<any> {
+    const response = await this.client.delete(`/api/subscription-cart/${itemId}`);
+    return response.data;
+  }
+
+  async updateSubscriptionCartItem(itemId: string, data: any): Promise<any> {
+    const response = await this.client.put(`/api/subscription-cart/${itemId}`, data);
+    return response.data;
+  }
+
+  async clearSubscriptionCart(): Promise<any> {
+    const response = await this.client.delete('/api/subscription-cart/clear/all');
+    return response.data;
+  }
+
+  async checkoutSubscriptionCart(paymentMethod?: string): Promise<any> {
+    const response = await this.client.post('/api/subscription-cart/checkout', { paymentMethod });
+    return response.data;
+  }
 }
 
 export const apiClient = new APIClient();

@@ -1,17 +1,33 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { apiClient } from '../../../../packages/api-client/src';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiClient } from '@restaurant-app/api-client';
 
 export default function AuthPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [showOTP, setShowOTP] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check URL params first
+    const url = searchParams?.get('returnUrl');
+    if (url) {
+      setReturnUrl(decodeURIComponent(url));
+    } else {
+      // Check localStorage for redirect after login
+      const redirectUrl = localStorage.getItem('redirectAfterLogin');
+      if (redirectUrl) {
+        setReturnUrl(redirectUrl);
+      }
+    }
+  }, [searchParams]);
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,10 +84,25 @@ export default function AuthPage() {
           localStorage.setItem('user', JSON.stringify(response.user));
         }
         
+        // Redirect based on return URL or registration status
         if (response.needsRegistration) {
+          // Save return URL to localStorage for use after registration
+          if (returnUrl) {
+            localStorage.setItem('returnUrl', returnUrl);
+          }
+          // Clear redirectAfterLogin
+          localStorage.removeItem('redirectAfterLogin');
           router.push('/register');
+        } else if (returnUrl) {
+          // Clear both redirect keys
+          localStorage.removeItem('redirectAfterLogin');
+          localStorage.removeItem('returnUrl');
+          router.push(returnUrl);
         } else {
-          router.push('/home');
+          // Clear redirect keys
+          localStorage.removeItem('redirectAfterLogin');
+          localStorage.removeItem('returnUrl');
+          router.push('/food/home');
         }
       }
     } catch (err: any) {

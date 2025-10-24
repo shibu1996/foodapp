@@ -156,7 +156,7 @@ export default function ProductsListPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-gray-700 capitalize">
-                        {product.type.replace('-', ' ')}
+                        {product.type ? product.type.replace('-', ' ') : 'N/A'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -205,4 +205,5 @@ export default function ProductsListPage() {
     </div>
   );
 }
+
 

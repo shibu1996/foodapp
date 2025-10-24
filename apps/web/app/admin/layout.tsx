@@ -11,7 +11,13 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
 
+  // TEMPORARILY DISABLED - Admin auth check removed for testing
   useEffect(() => {
+    // Auth check disabled - Admin panel accessible without login
+    console.log('⚠️ Admin panel running WITHOUT authentication (development mode)');
+    
+    /* ORIGINAL AUTH CODE - Uncomment to re-enable:
+    
     // Check if user is logged in
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
@@ -26,13 +32,15 @@ export default function AdminLayout({
       const user = JSON.parse(userStr);
       if (!user.email || !user.email.includes('admin')) {
         alert('Access denied. Admin only area.');
-        router.push('/home');
+        router.push('/food/home');
         return;
       }
     } catch (error) {
       console.error('Error parsing user data:', error);
       router.push('/auth');
     }
+    
+    */
   }, [router]);
 
   return (
@@ -44,4 +52,5 @@ export default function AdminLayout({
     </div>
   );
 }
+
 

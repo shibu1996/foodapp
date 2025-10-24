@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '../../../../packages/api-client/src';
+import { apiClient } from '@restaurant-app/api-client';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -34,7 +34,14 @@ export default function RegisterPage() {
           localStorage.setItem('user', JSON.stringify(response.user));
         }
         
-        router.push('/home');
+        // Check if there's a return URL from the auth flow
+        const returnUrl = localStorage.getItem('returnUrl');
+        if (returnUrl) {
+          localStorage.removeItem('returnUrl');
+          router.push(returnUrl);
+        } else {
+          router.push('/food/home');
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to complete registration');
