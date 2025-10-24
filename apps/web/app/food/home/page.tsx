@@ -84,6 +84,39 @@ export default function HomePage() {
     setCartLoaded(true);
   }, []);
 
+  // Listen for cart updates from FloatingCart
+  useEffect(() => {
+    const handleCartUpdate = () => {
+      console.log('🔄 Home page - Cart update event received');
+      const savedCart = localStorage.getItem('cart');
+      if (savedCart) {
+        try {
+          const cartData = JSON.parse(savedCart);
+          const validCart = cartData.filter((item: any) => {
+            if (item.type === 'subscription') {
+              return item.productName || item.name;
+            } else {
+              return (item.quantity && item.quantity > 0) && (item.name || item.productName);
+            }
+          });
+          console.log('♻️ Reloading cart from localStorage:', validCart.length, 'items');
+          setCart(validCart);
+        } catch (error) {
+          console.error('Error reloading cart:', error);
+        }
+      } else {
+        console.log('♻️ Cart is empty, clearing state');
+        setCart([]);
+      }
+    };
+
+    window.addEventListener('cartUpdated', handleCartUpdate);
+    
+    return () => {
+      window.removeEventListener('cartUpdated', handleCartUpdate);
+    };
+  }, []);
+
   // Monitor cart changes and save to localStorage (only after initial load)
   useEffect(() => {
     if (!cartLoaded) {

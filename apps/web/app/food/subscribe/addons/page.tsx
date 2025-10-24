@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
 
 const ADDONS = [
@@ -41,7 +41,9 @@ const ADDONS = [
 
 export default function AddonsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state, updateState } = useSubscription();
+  const isEditMode = searchParams?.get('editAddons') === 'true'; // Check if editing add-ons
   const [selectedAddons, setSelectedAddons] = useState<string[]>(state.addons || []);
 
   const toggleAddon = (addonId: string) => {
@@ -69,11 +71,17 @@ export default function AddonsPage() {
       addons: selectedAddons,
       addonPrice: addonPrice
     });
+    
+    if (isEditMode) {
+      console.log('🎯 Edit Mode - Navigating back to summary with updated add-ons');
+    } else {
+      console.log('🎯 Regular Mode - Navigating to summary');
+    }
     router.push('/food/subscribe/summary');
   };
 
   const totalAddonPrice = calculateAddonPrice();
-  const skipDaysCount = state.skipDays?.length || 0;
+  const skipDaysCount = state.skipDates?.length || 0;
   const activeDays = (state.duration || 0) - skipDaysCount;
   const dailyTotal = (state.basePrice || 0) + totalAddonPrice;
 
@@ -99,10 +107,13 @@ export default function AddonsPage() {
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-2xl font-bold mb-2" style={{ color: '#0E1214' }}>
-                Enhance Your Meal
+                {isEditMode ? 'Update Your Add-ons' : 'Enhance Your Meal'}
               </h1>
               <p className="text-sm" style={{ color: '#6B7280' }}>
-                Select delicious add-ons to make your subscription even better
+                {isEditMode 
+                  ? 'Modify your selected add-ons to customize your subscription'
+                  : 'Select delicious add-ons to make your subscription even better'
+                }
               </p>
             </div>
             {selectedAddons.length > 0 && (
@@ -124,6 +135,39 @@ export default function AddonsPage() {
                 Clear All
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Current Selection Summary */}
+        <div className="bg-white rounded-xl p-4 mb-6 border" style={{ borderColor: '#E5E7EB' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs" style={{ color: '#6B7280' }}>Duration</p>
+              <p className="font-bold text-sm mt-1" style={{ color: '#0E1214' }}>{state.duration} Days</p>
+            </div>
+            {state.startDate && (
+              <div>
+                <p className="text-xs" style={{ color: '#6B7280' }}>Starts</p>
+                <p className="font-semibold text-sm mt-1" style={{ color: '#0E1214' }}>
+                  {new Date(state.startDate).toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric'
+                  })}
+                </p>
+              </div>
+            )}
+            {state.deliverySlot && (
+              <div>
+                <p className="text-xs" style={{ color: '#6B7280' }}>Time</p>
+                <p className="font-semibold text-sm mt-1" style={{ color: '#0E1214' }}>{state.deliverySlot}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs" style={{ color: '#6B7280' }}>Skip Days</p>
+              <p className="font-semibold text-sm mt-1" style={{ color: '#0E1214' }}>
+                {(state.skipDates || []).length || 0}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -327,23 +371,25 @@ export default function AddonsPage() {
 
         {/* Navigation Buttons */}
         <div className="flex gap-3">
-          <button
-            onClick={() => router.back()}
-            className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
-            style={{ 
-              background: '#FFFFFF',
-              borderColor: '#E5E7EB',
-              color: '#374151'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F9FAFB';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-            }}
-          >
-            Back
-          </button>
+          {!isEditMode && (
+            <button
+              onClick={() => router.back()}
+              className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
+              style={{ 
+                background: '#FFFFFF',
+                borderColor: '#E5E7EB',
+                color: '#374151'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#F9FAFB';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+              }}
+            >
+              Back
+            </button>
+          )}
           <button
             onClick={handleNext}
             className="flex-1 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200"
@@ -358,7 +404,12 @@ export default function AddonsPage() {
               e.currentTarget.style.background = '#E11D48';
             }}
           >
-            {selectedAddons.length > 0 ? 'Continue with Add-ons' : 'Skip Add-ons'}
+            {isEditMode 
+              ? 'Update Add-ons'
+              : selectedAddons.length > 0 
+                ? 'Continue with Add-ons' 
+                : 'Skip Add-ons'
+            }
           </button>
         </div>
       </div>

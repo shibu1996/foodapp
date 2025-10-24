@@ -58,6 +58,11 @@ export default function OrderDetailsPage() {
           return;
         }
 
+        if (!params || !params.id) {
+          router.push('/food/orders');
+          return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/orders/${params.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -79,13 +84,15 @@ export default function OrderDetailsPage() {
       }
     };
 
-    if (params.id) {
+    if (params && params.id) {
       fetchOrder();
     }
-  }, [params.id, router]);
+  }, [params, router]);
 
   const handleCancelOrder = async () => {
     if (!confirm('Are you sure you want to cancel this order?')) return;
+
+    if (!params || !params.id) return;
 
     setCanceling(true);
     try {

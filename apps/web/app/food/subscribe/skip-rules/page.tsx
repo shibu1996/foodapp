@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
 
 export default function SkipRulesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state, updateState } = useSubscription();
+  const isEditMode = searchParams?.get('editSkip') === 'true'; // Check if editing skip days
   const [selectedSkipDays, setSelectedSkipDays] = useState<string[]>(state.skipDates || []);
   const [skipLater, setSkipLater] = useState(false); // User wants to skip selection for now
   const [calendarDays, setCalendarDays] = useState<Array<{
@@ -94,7 +96,15 @@ export default function SkipRulesPage() {
         skipEnabled: false,
         // Keep the original end date as is
       });
-      router.push('/food/subscribe/addons');
+      
+      // Navigate based on mode
+      if (isEditMode) {
+        console.log('🎯 Edit Mode - Navigating back to summary');
+        router.push('/food/subscribe/summary');
+      } else {
+        console.log('🎯 Regular Mode - Navigating to addons');
+        router.push('/food/subscribe/addons');
+      }
       return;
     }
 
@@ -115,7 +125,14 @@ export default function SkipRulesPage() {
       endDate: newEndDate
     });
     
-    router.push('/food/subscribe/addons');
+    // Navigate based on mode
+    if (isEditMode) {
+      console.log('🎯 Edit Mode - Navigating back to summary');
+      router.push('/food/subscribe/summary');
+    } else {
+      console.log('🎯 Regular Mode - Navigating to addons');
+      router.push('/food/subscribe/addons');
+    }
   };
 
   // Product-level settings (will come from admin panel later)
@@ -170,11 +187,42 @@ export default function SkipRulesPage() {
         {/* Page Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-2" style={{ color: '#0E1214' }}>
-            Select Days to Skip Delivery
+            {isEditMode ? 'Update Skip Days' : 'Select Days to Skip Delivery'}
           </h1>
           <p className="text-sm" style={{ color: '#6B7280' }}>
-            Choose the days when you don't want delivery during your subscription period
+            {isEditMode 
+              ? 'Modify your skip days. Your subscription will adjust based on changes.'
+              : 'Choose the days when you don\'t want delivery during your subscription period'
+            }
           </p>
+        </div>
+
+        {/* Current Selection Summary */}
+        <div className="bg-white rounded-xl p-4 mb-6 border" style={{ borderColor: '#E5E7EB' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <p className="text-xs" style={{ color: '#6B7280' }}>Plan Duration</p>
+              <p className="font-bold text-sm mt-1" style={{ color: '#0E1214' }}>{state.duration} Days</p>
+            </div>
+            {state.startDate && (
+              <div>
+                <p className="text-xs" style={{ color: '#6B7280' }}>Start Date</p>
+                <p className="font-semibold text-sm mt-1" style={{ color: '#0E1214' }}>
+                  {new Date(state.startDate).toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </p>
+              </div>
+            )}
+            {state.deliverySlot && (
+              <div>
+                <p className="text-xs" style={{ color: '#6B7280' }}>Delivery Time</p>
+                <p className="font-semibold text-sm mt-1" style={{ color: '#0E1214' }}>{state.deliverySlot}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Skip Now or Later Option */}
@@ -589,23 +637,25 @@ export default function SkipRulesPage() {
 
         {/* Navigation Buttons */}
         <div className="flex gap-3">
-          <button
-            onClick={() => router.back()}
-            className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
-            style={{ 
-              background: '#FFFFFF',
-              borderColor: '#E5E7EB',
-              color: '#374151'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F9FAFB';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-            }}
-          >
-            Back
-          </button>
+          {!isEditMode && (
+            <button
+              onClick={() => router.back()}
+              className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
+              style={{ 
+                background: '#FFFFFF',
+                borderColor: '#E5E7EB',
+                color: '#374151'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#F9FAFB';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+              }}
+            >
+              Back
+            </button>
+          )}
           <button
             onClick={handleNext}
             className="flex-1 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200"
@@ -620,11 +670,13 @@ export default function SkipRulesPage() {
               e.currentTarget.style.background = '#E11D48';
             }}
           >
-            {skipLater 
-              ? '⏩ Skip This Step & Continue' 
-              : selectedSkipDays.length > 0 
-                ? `Continue with ${selectedSkipDays.length} Skip Day${selectedSkipDays.length > 1 ? 's' : ''}`
-                : 'Continue Without Skip Days'
+            {isEditMode 
+              ? 'Update Skip Days'
+              : skipLater 
+                ? '⏩ Skip This Step & Continue' 
+                : selectedSkipDays.length > 0 
+                  ? `Continue with ${selectedSkipDays.length} Skip Day${selectedSkipDays.length > 1 ? 's' : ''}`
+                  : 'Continue Without Skip Days'
             }
           </button>
         </div>

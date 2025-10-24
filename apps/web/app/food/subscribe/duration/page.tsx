@@ -22,6 +22,7 @@ export default function DurationPage() {
   // Get data from URL params as fallback for initial render
   const urlPrice = searchParams ? parseInt(searchParams.get('price') || '0') : 0;
   const urlProductName = searchParams ? searchParams.get('name') || '' : '';
+  const isEditPlanMode = searchParams?.get('editPlan') === 'true'; // Check if editing plan
   
   const currentPrice = state.basePrice || urlPrice;
   const currentProductName = state.productName || urlProductName;
@@ -53,34 +54,82 @@ export default function DurationPage() {
     
     // Update product details from URL params
     if (productId && productName && price) {
-      const updates: any = {
-        productId,
-        productName,
-        basePrice: parseInt(price),
-      };
+      // Check if this is a NEW subscription (different product)
+      const isNewSubscription = state.productId && state.productId !== productId;
       
-      // Always update description and image if provided in URL
-      if (description && description !== 'undefined' && description !== '') {
-        const decodedDesc = decodeURIComponent(description);
-        updates.productDescription = decodedDesc;
-        console.log('📝 Setting description:', decodedDesc.substring(0, 50) + '...');
+      if (isNewSubscription) {
+        console.log('🆕 New subscription detected! Clearing old state...');
+        console.log('Old productId:', state.productId, '→ New productId:', productId);
+        
+        // Clear ALL localStorage items related to subscription
+        localStorage.removeItem('subscriptionState');
+        localStorage.removeItem('editingSubscription');
+        
+        // Reset to fresh state with only new product details
+        const updates: any = {
+          productId,
+          productName,
+          basePrice: parseInt(price),
+          duration: 7, // Reset to default
+          isCustomDuration: false,
+          deliverySlot: '', // Clear old slot
+          startDate: '', // Clear old date
+          endDate: '', // Clear old date
+          skipEnabled: false,
+          maxSkips: 0,
+          addons: [], // Clear old addons
+          addonPrice: 0,
+          skipDates: [], // Clear old skip dates
+          couponCode: '',
+          discount: 0,
+          finalPrice: 0,
+        };
+        
+        // Add description and image if provided
+        if (description && description !== 'undefined' && description !== '') {
+          updates.productDescription = decodeURIComponent(description);
+        }
+        if (image && image !== 'undefined' && image !== '') {
+          updates.productImage = decodeURIComponent(image);
+        }
+        
+        console.log('✨ Setting fresh state for new subscription');
+        updateState(updates);
+        setSelectedDuration(7);
+        setIsCustom(false);
+        setCustomDays('');
+      } else {
+        // Same product or first time - just update product details
+        const updates: any = {
+          productId,
+          productName,
+          basePrice: parseInt(price),
+        };
+        
+        // Always update description and image if provided in URL
+        if (description && description !== 'undefined' && description !== '') {
+          const decodedDesc = decodeURIComponent(description);
+          updates.productDescription = decodedDesc;
+          console.log('📝 Setting description:', decodedDesc.substring(0, 50) + '...');
+        }
+        
+        if (image && image !== 'undefined' && image !== '') {
+          const decodedImage = decodeURIComponent(image);
+          updates.productImage = decodedImage;
+          console.log('🖼️ Setting image:', decodedImage.substring(0, 50) + '...');
+        }
+        
+        console.log('💾 Updating subscription state with:', {
+          productId: updates.productId,
+          productName: updates.productName,
+          basePrice: updates.basePrice,
+          hasDescription: !!updates.productDescription,
+          hasImage: !!updates.productImage
+        });
+        
+        updateState(updates);
       }
       
-      if (image && image !== 'undefined' && image !== '') {
-        const decodedImage = decodeURIComponent(image);
-        updates.productImage = decodedImage;
-        console.log('🖼️ Setting image:', decodedImage.substring(0, 50) + '...');
-      }
-      
-      console.log('💾 Updating subscription state with:', {
-        productId: updates.productId,
-        productName: updates.productName,
-        basePrice: updates.basePrice,
-        hasDescription: !!updates.productDescription,
-        hasImage: !!updates.productImage
-      });
-      
-      updateState(updates);
       setDataLoaded(true); // Mark data as loaded
     } else {
       console.warn('⚠️ Missing required params:', { productId, productName, price });
@@ -113,7 +162,7 @@ export default function DurationPage() {
   const handleNext = () => {
     const finalDuration = isCustom ? parseInt(customDays) : selectedDuration;
     
-    console.log('🚀 handleNext called', { isCustom, customDays, selectedDuration, finalDuration, dataLoaded });
+    console.log('🚀 handleNext called', { isCustom, customDays, selectedDuration, finalDuration, dataLoaded, isEditPlanMode });
     
     if (isCustom && (isNaN(finalDuration) || finalDuration < 3 || finalDuration > 90)) {
       alert('Please enter a valid number of days (3-90)');
@@ -175,8 +224,14 @@ export default function DurationPage() {
       productDescription: productDescription,
     });
 
-    console.log('🎯 Navigating to timeslot with complete data');
-    router.push('/food/subscribe/timeslot');
+    // Navigate based on mode
+    if (isEditPlanMode) {
+      console.log('🎯 Edit Plan Mode - Navigating back to summary');
+      router.push('/food/subscribe/summary');
+    } else {
+      console.log('🎯 Regular Mode - Navigating to start-date');
+      router.push('/food/subscribe/start-date');
+    }
   };
 
   const activeDuration = isCustom ? (customDays ? parseInt(customDays) : 0) : selectedDuration;
@@ -199,8 +254,12 @@ export default function DurationPage() {
       {/* Main Content */}
       <div className="max-w-3xl mx-auto px-6 md:px-8 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-1" style={{ color: '#0E1214' }}>Select Plan Duration</h1>
-          <p className="text-sm" style={{ color: '#6B7280' }}>Choose how long you want to subscribe</p>
+          <h1 className="text-2xl font-bold mb-1" style={{ color: '#0E1214' }}>
+            {isEditPlanMode ? 'Update Plan Duration' : 'Select Plan Duration'}
+          </h1>
+          <p className="text-sm" style={{ color: '#6B7280' }}>
+            {isEditPlanMode ? 'Change your subscription duration' : 'Choose how long you want to subscribe'}
+          </p>
         </div>
 
         {/* Product Info */}
@@ -374,15 +433,17 @@ export default function DurationPage() {
 
         {/* Navigation Buttons */}
         <div className="flex gap-3">
-          <button
-            onClick={() => router.back()}
-            className="px-5 py-2.5 border-2 rounded-lg font-semibold text-sm transition-all"
-            style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: '#FFFFFF' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F9FAFB'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
-          >
-            Back
-          </button>
+          {!isEditPlanMode && (
+            <button
+              onClick={() => router.back()}
+              className="px-5 py-2.5 border-2 rounded-lg font-semibold text-sm transition-all"
+              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: '#FFFFFF' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F9FAFB'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+            >
+              Back
+            </button>
+          )}
           <button
             onClick={handleNext}
             className="flex-1 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all"
@@ -394,7 +455,7 @@ export default function DurationPage() {
               e.currentTarget.style.backgroundColor = '#E11D48';
             }}
           >
-            Next: Choose Time Slot
+            {isEditPlanMode ? 'Update Plan' : 'Next: Choose Time Slot'}
           </button>
         </div>
       </div>

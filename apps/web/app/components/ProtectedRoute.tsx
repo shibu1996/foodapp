@@ -21,7 +21,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
 
       // Check if user is logged in
       if (!token || !userStr) {
-        const returnUrl = encodeURIComponent(pathname);
+        const returnUrl = encodeURIComponent(pathname || '/');
         router.push(`/auth?returnUrl=${returnUrl}`);
         return;
       }

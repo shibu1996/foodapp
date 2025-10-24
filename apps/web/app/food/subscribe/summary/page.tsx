@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
 import { apiClient } from '@restaurant-app/api-client';
 
@@ -20,7 +20,8 @@ const TIME_SLOTS = [
 
 export default function SummaryPage() {
   const router = useRouter();
-  const { state, updateState, calculatePrice } = useSubscription();
+  const searchParams = useSearchParams();
+  const { state, updateState, calculatePrice, resetState } = useSubscription();
   const [couponCode, setCouponCode] = useState(state.couponCode || '');
   const [appliedCoupon, setAppliedCoupon] = useState(!!state.couponCode);
 
@@ -59,10 +60,113 @@ export default function SummaryPage() {
   const [addingToCart, setAddingToCart] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  // Initialize isLoadingEditData based on localStorage check
+  const [isLoadingEditData, setIsLoadingEditData] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const hasEditData = !!localStorage.getItem('editingSubscription');
+      console.log('🏁 Initial check - editingSubscription exists:', hasEditData);
+      return hasEditData;
+    }
+    return false;
+  });
+
+  // Check if this product already exists in cart (Edit mode)
+  useEffect(() => {
+    const savedCart = localStorage.getItem('cart');
+    if (savedCart && state.productId) {
+      try {
+        const cart = JSON.parse(savedCart);
+        const existingItem = cart.find((item: any) => 
+          item.type === 'subscription' && item.productId === state.productId
+        );
+        if (existingItem) {
+          setIsEditMode(true);
+          console.log('📝 Edit mode detected - subscription already in cart');
+        }
+      } catch (error) {
+        console.error('Error checking cart:', error);
+      }
+    }
+  }, [state.productId]);
+
+  // Function to load edit data from localStorage
+  const loadEditData = () => {
+    const editingData = localStorage.getItem('editingSubscription');
+    console.log('🔍 Checking for editingSubscription in localStorage:', !!editingData);
+    
+    if (editingData) {
+      console.log('🔄 Edit mode detected - Loading data from localStorage');
+      setIsLoadingEditData(true); // Mark that we're loading edit data
+      try {
+        const subscriptionData = JSON.parse(editingData);
+        console.log('📝 Subscription data to load:', {
+          productName: subscriptionData.productName || subscriptionData.name,
+          duration: subscriptionData.duration,
+          basePrice: subscriptionData.basePrice
+        });
+        
+        // Update context with loaded data
+        updateState({
+          productId: subscriptionData.productId,
+          productName: subscriptionData.productName || subscriptionData.name,
+          productImage: subscriptionData.productImage || subscriptionData.image,
+          productDescription: subscriptionData.productDescription,
+          duration: subscriptionData.duration,
+          startDate: subscriptionData.startDate,
+          endDate: subscriptionData.endDate,
+          deliverySlot: subscriptionData.deliverySlot,
+          skipDates: subscriptionData.skipDates || [],
+          skipEnabled: subscriptionData.skipEnabled || false,
+          addons: subscriptionData.addons || [],
+          addonPrice: subscriptionData.addonPrice || 0,
+          basePrice: subscriptionData.basePrice,
+          couponCode: subscriptionData.couponCode || '',
+        });
+        
+        setIsEditMode(true);
+        console.log('✅ Edit data loaded successfully');
+        
+        // Clear the flag from localStorage
+        localStorage.removeItem('editingSubscription');
+        
+        // Use setTimeout to ensure state updates have processed
+        setTimeout(() => {
+          setIsLoadingEditData(false);
+        }, 100);
+      } catch (error) {
+        console.error('Error loading editing subscription:', error);
+        setIsLoadingEditData(false);
+      }
+    }
+  };
+
+  // Load subscription data from localStorage on mount
+  useEffect(() => {
+    loadEditData();
+  }, []);
+
+  // Watch for 'edit' query parameter changes (for editing from cart while on summary page)
+  useEffect(() => {
+    if (searchParams) {
+      const editParam = searchParams.get('edit');
+      if (editParam) {
+        console.log('🔄 Edit parameter detected, reloading data...');
+        loadEditData();
+      }
+    }
+  }, [searchParams]);
 
   const handleAddToCart = async () => {
     try {
       setAddingToCart(true);
+      
+      console.log('💾 handleAddToCart - Current state:', {
+        productName: state.productName,
+        productId: state.productId,
+        basePrice: state.basePrice,
+        duration: state.duration
+      });
       
       // Prepare complete subscription data with type marker
       const subscriptionItem = {
@@ -76,6 +180,8 @@ export default function SummaryPage() {
         productDescription: state.productDescription,
         basePrice: state.basePrice,
         price: finalTotal, // Total price for display
+        subscriptionPrice: finalTotal, // For checkout page
+        totalPrice: finalTotal, // Alternative field
         duration: state.duration,
         deliverySlot: state.deliverySlot,
         startDate: state.startDate,
@@ -90,13 +196,32 @@ export default function SummaryPage() {
         quantity: 1, // For consistency with one-time items
         addedAt: new Date().toISOString(),
       };
+      
+      console.log('📦 subscriptionItem being saved:', {
+        productName: subscriptionItem.productName,
+        basePrice: subscriptionItem.basePrice,
+        duration: subscriptionItem.duration,
+        hasAllFields: !!(subscriptionItem.productName && subscriptionItem.basePrice)
+      });
 
       // Get existing unified cart from localStorage (same cart for one-time & subscriptions)
       const existingCart = localStorage.getItem('cart');
       let cart = existingCart ? JSON.parse(existingCart) : [];
 
-      // Add new subscription to the unified cart
-      cart.push(subscriptionItem);
+      // Check if this product already has a subscription in cart
+      const existingSubscriptionIndex = cart.findIndex((item: any) => 
+        item.type === 'subscription' && item.productId === state.productId
+      );
+
+      if (existingSubscriptionIndex !== -1) {
+        // Update existing subscription
+        console.log('📝 Updating existing subscription in cart for product:', state.productId);
+        cart[existingSubscriptionIndex] = subscriptionItem;
+        } else {
+        // Add new subscription to the unified cart
+        console.log('➕ Adding new subscription to cart for product:', state.productId);
+        cart.push(subscriptionItem);
+      }
 
       // Save updated unified cart
       localStorage.setItem('cart', JSON.stringify(cart));
@@ -119,8 +244,20 @@ export default function SummaryPage() {
 
   const handleCheckout = () => {
     setCheckingOut(true);
-    // Navigate directly to checkout
-    router.push('/food/subscribe/checkout');
+    
+    // Check if user is logged in
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (!token || !user) {
+      console.log('🔒 User not logged in, redirecting to auth page');
+      // Redirect to auth page with return URL to delivery address
+      router.push('/auth?returnUrl=/food/checkout');
+    } else {
+      console.log('✅ User logged in, navigating to delivery address');
+      // User is logged in, go to delivery address selection
+      router.push('/food/checkout');
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -149,6 +286,8 @@ export default function SummaryPage() {
 
   // Debug log to check if product details are set
   useEffect(() => {
+    console.log('🔎 Redirect Check Running - isLoadingEditData:', isLoadingEditData);
+    
     // Check localStorage directly
     const savedState = localStorage.getItem('subscriptionState');
     if (savedState) {
@@ -172,18 +311,117 @@ export default function SummaryPage() {
     });
     
     // If essential data is missing, redirect to home page
+    // BUT: Don't redirect if we're currently loading edit data
     if (!state.productName || !state.basePrice) {
+      // Check if we're loading edit data
+      if (isLoadingEditData) {
+        console.log('⏳ Waiting for edit data to load... (isLoadingEditData=true)');
+        return; // Don't redirect yet, data is being loaded
+      }
+      
+      // Also check if editingSubscription exists in localStorage (as a backup)
+      const editingData = localStorage.getItem('editingSubscription');
+      if (editingData) {
+        console.log('⏳ Edit data found in localStorage, waiting to load...');
+        return; // Don't redirect, data will be loaded shortly
+      }
+      
       console.warn('⚠️ Missing product data! Redirecting to home page...');
+      console.warn('State:', { productName: state.productName, basePrice: state.basePrice });
+      console.warn('isLoadingEditData:', isLoadingEditData);
       // Small delay to allow user to see the warning
       const timer = setTimeout(() => {
         router.push('/food/home');
       }, 2000);
       return () => clearTimeout(timer);
+    } else {
+      console.log('✅ Product data is present, no redirect needed');
     }
-  }, [state.productId, state.productName, state.productImage, state.productDescription, state.basePrice, state.duration, router]);
+  }, [state.productId, state.productName, state.productImage, state.productDescription, state.basePrice, state.duration, router, isLoadingEditData]);
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Beautiful Loading Overlay for Edit Mode */}
+      {isLoadingEditData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF1F2 0%, #FFFFFF 50%, #FFF1F2 100%)' }}>
+          <div className="text-center">
+            {/* Animated Container with Pulse Effect */}
+            <div className="relative inline-block mb-6">
+              {/* Outer Pulsing Ring */}
+              <div 
+                className="absolute inset-0 rounded-full animate-ping opacity-20" 
+                style={{ 
+                  background: 'linear-gradient(135deg, #E11D48 0%, #BE123C 100%)',
+                  animationDuration: '1.5s'
+                }}
+              ></div>
+              
+              {/* Middle Ring */}
+              <div 
+                className="absolute inset-0 rounded-full opacity-30"
+                style={{ 
+                  background: 'linear-gradient(135deg, #FFF1F2 0%, #FFE4E6 100%)',
+                  transform: 'scale(0.9)'
+                }}
+              ></div>
+              
+              {/* Main Spinner Container */}
+              <div 
+                className="relative w-24 h-24 rounded-full flex items-center justify-center"
+                style={{ 
+                  background: 'linear-gradient(135deg, #E11D48 0%, #BE123C 100%)',
+                  boxShadow: '0 10px 40px rgba(225, 29, 72, 0.3)'
+                }}
+              >
+                {/* Rotating Border */}
+                <svg className="absolute inset-0 w-full h-full animate-spin" style={{ animationDuration: '2s' }} viewBox="0 0 50 50">
+                  <circle
+                    cx="25"
+                    cy="25"
+                    r="20"
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeDasharray="80, 200"
+                    strokeDashoffset="0"
+                  />
+                </svg>
+                
+                {/* Cart Icon */}
+                <svg className="w-10 h-10 relative z-10" fill="none" stroke="#FFFFFF" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+            </div>
+            
+            {/* Loading Text with Animation */}
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold animate-pulse" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
+                Loading Subscription Details
+              </h3>
+              <div className="flex items-center justify-center gap-1">
+                <div className="w-2 h-2 rounded-full animate-bounce" style={{ 
+                  backgroundColor: '#E11D48',
+                  animationDelay: '0ms'
+                }}></div>
+                <div className="w-2 h-2 rounded-full animate-bounce" style={{ 
+                  backgroundColor: '#BE123C',
+                  animationDelay: '150ms'
+                }}></div>
+                <div className="w-2 h-2 rounded-full animate-bounce" style={{ 
+                  backgroundColor: '#9F1239',
+                  animationDelay: '300ms'
+                }}></div>
+              </div>
+              <p className="text-sm" style={{ color: '#6B7280', fontFamily: 'Poppins, sans-serif' }}>
+                Please wait a moment...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Progress Bar */}
       <div style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
         <div className="max-w-6xl mx-auto px-6 md:px-8 py-3">
@@ -224,7 +462,22 @@ export default function SummaryPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => router.push('/food/subscribe/duration')}
+                  onClick={() => {
+                    // Navigate back to duration page with all product details
+                    const params = new URLSearchParams();
+                    params.set('product', state.productId);
+                    params.set('name', state.productName);
+                    params.set('price', state.basePrice.toString());
+                    params.set('editPlan', 'true'); // Mark as plan edit mode
+                    if (state.productDescription) {
+                      params.set('description', encodeURIComponent(state.productDescription));
+                    }
+                    if (state.productImage) {
+                      params.set('image', encodeURIComponent(state.productImage));
+                    }
+                    console.log('📝 Navigating to duration page in Edit Plan mode');
+                    router.push(`/food/subscribe/duration?${params.toString()}`);
+                  }}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-200"
                   style={{ 
                     color: '#E11D48',
@@ -329,7 +582,10 @@ export default function SummaryPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => router.push('/food/subscribe/start-date')}
+                  onClick={() => {
+                    console.log('📝 Navigating to start-date in Edit mode');
+                    router.push('/food/subscribe/start-date?editSchedule=true');
+                  }}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-200"
                   style={{ 
                     color: '#E11D48',
@@ -343,7 +599,7 @@ export default function SummaryPage() {
                     e.currentTarget.style.background = '#FEF2F2';
                   }}
                 >
-                  Edit
+                  Update Delivery
                 </button>
               </div>
 
@@ -409,7 +665,10 @@ export default function SummaryPage() {
                     </p>
                   </div>
                   <button
-                    onClick={() => router.push('/food/subscribe/skip-rules')}
+                    onClick={() => {
+                      console.log('📝 Navigating to skip-rules in Edit mode');
+                      router.push('/food/subscribe/skip-rules?editSkip=true');
+                    }}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-200"
                   style={{ 
                     color: '#E11D48',
@@ -423,7 +682,7 @@ export default function SummaryPage() {
                     e.currentTarget.style.background = '#FEF2F2';
                   }}
                   >
-                    Edit
+                    Update Skip Days
                   </button>
                 </div>
               
@@ -493,7 +752,10 @@ export default function SummaryPage() {
                   </p>
                 </div>
                   <button
-                    onClick={() => router.push('/food/subscribe/addons')}
+                    onClick={() => {
+                      console.log('📝 Navigating to addons in Edit mode');
+                      router.push('/food/subscribe/addons?editAddons=true');
+                    }}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-200"
                   style={{ 
                     color: '#E11D48',
@@ -507,7 +769,7 @@ export default function SummaryPage() {
                     e.currentTarget.style.background = '#FEF2F2';
                   }}
                   >
-                    Edit
+                    Update Add-ons
                   </button>
                 </div>
 
@@ -552,67 +814,6 @@ export default function SummaryPage() {
                   </p>
               </div>
             )}
-            </div>
-
-
-            {/* Coupon Code */}
-            <div className="p-5 rounded-xl border" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-              <h3 className="text-base font-bold mb-4" style={{ color: '#0E1214' }}>
-                Have a Coupon Code?
-              </h3>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                  placeholder="Enter code"
-                  disabled={appliedCoupon}
-                  className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none disabled:opacity-50"
-                  style={{
-                    borderColor: '#E5E7EB',
-                    color: '#0E1214'
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#E11D48';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#E5E7EB';
-                  }}
-                />
-                <button
-                  onClick={applyCoupon}
-                  disabled={appliedCoupon || !couponCode}
-                  className="px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ 
-                    background: appliedCoupon ? '#10B981' : '#E11D48',
-                    color: '#FFFFFF'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!appliedCoupon && couponCode) {
-                      e.currentTarget.style.background = '#BE123C';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!appliedCoupon) {
-                      e.currentTarget.style.background = '#E11D48';
-                    }
-                  }}
-                >
-                  {appliedCoupon ? '✓ Applied' : 'Apply'}
-                </button>
-              </div>
-              {appliedCoupon && (
-                <div className="mt-3 p-2 rounded-lg" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                  <p className="text-xs font-semibold" style={{ color: '#15803D' }}>
-                    ✓ Coupon "{couponCode}" applied successfully!
-                  </p>
-                </div>
-              )}
-              <div className="mt-3 p-2 rounded-lg" style={{ background: '#EFF6FF', border: '1px solid #DBEAFE' }}>
-                <p className="text-xs" style={{ color: '#1E40AF' }}>
-                  💡 Try: <span className="font-semibold">FIRST50</span> or <span className="font-semibold">SAVE100</span>
-                </p>
-              </div>
             </div>
           </div>
 
@@ -679,21 +880,6 @@ export default function SummaryPage() {
                   </div>
                 </div>
 
-              {/* Discounts Section - Only Coupon */}
-              {couponDiscount > 0 && (
-                <div className="space-y-2 mb-4 pb-4" style={{ borderBottom: '1px solid #F3F4F6' }}>
-                  <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#F0FDF4' }}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">🎫</span>
-                      <span className="text-xs font-semibold" style={{ color: '#166534' }}>
-                        Coupon Discount
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold" style={{ color: '#10B981' }}>-₹{couponDiscount || 0}</span>
-                  </div>
-                  </div>
-                )}
-
               {/* Skip Days Info */}
               {skipDaysCount > 0 && (
                 <div className="mb-4 p-3 rounded-lg" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
@@ -726,96 +912,131 @@ export default function SummaryPage() {
                   </div>
                 </div>
                 <p className="text-xs mt-2" style={{ color: '#B45309' }}>✓ Inclusive of all taxes</p>
-                {totalDiscount > 0 && (
-                  <div className="mt-2 pt-2" style={{ borderTop: '1px solid #FEE2E2' }}>
-                    <p className="text-xs" style={{ color: '#15803D' }}>
-                      🎉 You saved ₹{totalDiscount} with coupon!
-                    </p>
-                  </div>
-                )}
               </div>
 
               {/* Action Buttons */}
               {!addedToCart ? (
-                <div className="flex gap-2.5 mb-4">
-                  {/* Add to Cart Button */}
-                  <button
-                    onClick={handleAddToCart}
-                    disabled={addingToCart || checkingOut}
-                    className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
-                    style={{ 
-                      background: (addingToCart || checkingOut) ? '#9CA3AF' : '#FFFFFF',
-                      color: (addingToCart || checkingOut) ? '#FFFFFF' : '#E11D48',
-                      border: '2px solid #E11D48',
-                      cursor: (addingToCart || checkingOut) ? 'not-allowed' : 'pointer',
-                      opacity: (addingToCart || checkingOut) ? 0.7 : 1
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!addingToCart && !checkingOut) {
-                        e.currentTarget.style.background = '#FEF2F2';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!addingToCart && !checkingOut) {
-                        e.currentTarget.style.background = '#FFFFFF';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }
-                    }}
-                  >
-                    {addingToCart ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Adding...
-                      </>
-                    ) : (
-                      <>
-                        🛒 Add to Cart
-                      </>
-                    )}
-                  </button>
+                <div className="mb-4">
+                  {isEditMode ? (
+                    /* Edit Mode - Only "Update Cart" button (Full Width) */
+                    <button
+                      onClick={handleAddToCart}
+                      disabled={addingToCart}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
+                      style={{ 
+                        background: addingToCart ? '#9CA3AF' : '#E11D48',
+                        color: '#FFFFFF',
+                        cursor: addingToCart ? 'not-allowed' : 'pointer',
+                        opacity: addingToCart ? 0.7 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!addingToCart) {
+                          e.currentTarget.style.background = '#BE123C';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!addingToCart) {
+                          e.currentTarget.style.background = '#E11D48';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }
+                      }}
+                    >
+                      {addingToCart ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          🔄 Update Cart
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    /* First Time - Two buttons: "Add to Cart" + "Checkout" */
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Add to Cart Button */}
+                      <button
+                        onClick={handleAddToCart}
+                        disabled={addingToCart}
+                        className="py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
+                        style={{ 
+                          background: addingToCart ? '#9CA3AF' : '#FFFFFF',
+                          color: addingToCart ? '#FFFFFF' : '#E11D48',
+                          border: `2px solid ${addingToCart ? '#9CA3AF' : '#E11D48'}`,
+                          cursor: addingToCart ? 'not-allowed' : 'pointer',
+                          opacity: addingToCart ? 0.7 : 1
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!addingToCart) {
+                            e.currentTarget.style.background = '#FEF2F2';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!addingToCart) {
+                            e.currentTarget.style.background = '#FFFFFF';
+                          }
+                        }}
+                      >
+                        {addingToCart ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Adding...
+                          </>
+                        ) : (
+                          <>
+                            🛒 Add to Cart
+                          </>
+                        )}
+                      </button>
 
-                  {/* Checkout Button */}
-                  <button
-                    onClick={handleCheckout}
-                    disabled={addingToCart || checkingOut}
-                    className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
-                    style={{ 
-                      background: (addingToCart || checkingOut) ? '#9CA3AF' : '#E11D48',
-                      color: '#FFFFFF',
-                      cursor: (addingToCart || checkingOut) ? 'not-allowed' : 'pointer',
-                      opacity: (addingToCart || checkingOut) ? 0.7 : 1
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!addingToCart && !checkingOut) {
-                        e.currentTarget.style.background = '#BE123C';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!addingToCart && !checkingOut) {
-                        e.currentTarget.style.background = '#E11D48';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }
-                    }}
-                  >
-                    {checkingOut ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        ⚡ Checkout Now
-                      </>
-                    )}
-                  </button>
+                      {/* Checkout Button */}
+                      <button
+                        onClick={handleCheckout}
+                        disabled={checkingOut}
+                        className="py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
+                        style={{ 
+                          background: checkingOut ? '#9CA3AF' : '#E11D48',
+                          color: '#FFFFFF',
+                          cursor: checkingOut ? 'not-allowed' : 'pointer',
+                          opacity: checkingOut ? 0.7 : 1
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!checkingOut) {
+                            e.currentTarget.style.background = '#BE123C';
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!checkingOut) {
+                            e.currentTarget.style.background = '#E11D48';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                          }
+                        }}
+                      >
+                        {checkingOut ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            💳 Checkout
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
@@ -829,16 +1050,22 @@ export default function SummaryPage() {
                       </div>
                       <div className="flex-1">
                         <h4 className="text-sm font-bold" style={{ color: '#166534' }}>
-                          ✅ Added to Cart Successfully!
+                          ✅ {isEditMode ? 'Cart Updated Successfully!' : 'Added to Cart Successfully!'}
                         </h4>
                       </div>
                     </div>
-              </div>
+                  </div>
 
-                  {/* Action Button After Adding - Only "Add More Products" */}
+                  {/* Action Button After Adding - "Add More Products" */}
                   <button
-                    onClick={() => router.push('/food/home')}
-                    className="w-full py-3 rounded-xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 mb-4"
+                    onClick={() => {
+                      console.log('🧹 Clearing subscription state before returning to home...');
+                      // Clear subscription state so new subscription starts fresh
+                      resetState();
+                      // Navigate to home page
+                      router.push('/food/home');
+                    }}
+                    className="w-full py-3 rounded-xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2"
                     style={{ 
                       background: '#E11D48',
                       color: '#FFFFFF'
@@ -846,15 +1073,25 @@ export default function SummaryPage() {
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = '#BE123C';
                       e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(225, 29, 72, 0.3)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = '#E11D48';
                       e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = 'none';
                     }}
                   >
-                    Add More Products
+                    {checkingOut ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        Add More Products
+                      </>
+                    )}
                   </button>
                 </>
               )}
@@ -880,27 +1117,6 @@ export default function SummaryPage() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Back Button */}
-        <div className="mt-6">
-          <button
-            onClick={() => router.back()}
-            className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
-            style={{ 
-              background: '#FFFFFF',
-              borderColor: '#E5E7EB',
-              color: '#374151'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F9FAFB';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-            }}
-          >
-            ← Back to Add-ons
-          </button>
         </div>
       </div>
     </div>

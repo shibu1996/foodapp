@@ -9,6 +9,15 @@ export function FloatingCart() {
   const [cart, setCart] = useState<any[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
 
+  // Monitor cart state changes
+  useEffect(() => {
+    console.log('🛒 FloatingCart state updated:', cart.length, 'items', cart.map(i => ({ 
+      name: i.name || i.productName, 
+      type: i.type,
+      id: i._id || i.id
+    })));
+  }, [cart]);
+
   // Load cart from localStorage on mount
   useEffect(() => {
     const loadCart = () => {
@@ -16,6 +25,16 @@ export function FloatingCart() {
       if (savedCart) {
         try {
           const cartData = JSON.parse(savedCart);
+          
+          // Log subscription items details
+          const subscriptionItems = cartData.filter((item: any) => item.type === 'subscription');
+          console.log('🔄 FloatingCart - Subscription items from localStorage:', subscriptionItems.map((item: any) => ({
+            productName: item.productName || item.name,
+            basePrice: item.basePrice,
+            duration: item.duration,
+            hasRequiredFields: !!(item.productName || item.name) && !!item.basePrice
+          })));
+          
           // Filter out invalid items (quantity 0 or missing essential fields)
           const validCart = cartData.filter((item: any) => {
             if (item.type === 'subscription') {
@@ -63,14 +82,36 @@ export function FloatingCart() {
   }, []);
 
   const removeFromCart = (productId: string) => {
+    console.log('🗑️ Removing item from cart:', productId);
+    console.log('📦 Current cart before removal:', cart.length, 'items');
+    
     const newCart = cart.filter(item => {
       const itemId = item._id || item.id;
-      return itemId !== productId;
+      const shouldKeep = itemId !== productId;
+      if (!shouldKeep) {
+        console.log('✂️ Removing item:', item.name || item.productName);
+      }
+      return shouldKeep;
     });
+    
+    console.log('📦 New cart after removal:', newCart.length, 'items');
+    
+    // Update state immediately
     setCart(newCart);
+    
+    // Update localStorage
     localStorage.setItem('cart', JSON.stringify(newCart));
+    
+    // Close modal if cart is empty
+    if (newCart.length === 0) {
+      setShowCartModal(false);
+      console.log('🚪 Closing cart modal (cart is empty)');
+    }
+    
     // Dispatch custom event for same-tab sync
     window.dispatchEvent(new Event('cartUpdated'));
+    
+    console.log('✅ Cart updated successfully');
   };
 
   const updateQuantity = (product: any, newQuantity: number) => {
@@ -203,19 +244,36 @@ export function FloatingCart() {
 
                   {/* Details */}
                   <div className="flex-1">
-                    <div className="flex items-center gap-1.5 mb-0.5">
+                    <div className="flex items-center gap-1.5 mb-1">
                       <h3 className="font-bold text-sm" style={{ color: '#0E1214' }}>{item.name || item.productName}</h3>
                       {item.type === 'subscription' && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-bold" style={{ backgroundColor: '#FEF2F2', color: '#E11D48' }}>
-                          📅
+                          Subscription
                         </span>
                       )}
                     </div>
                     
                     {item.type === 'subscription' ? (
-                      <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
-                        {item.duration} days plan • Starts: {item.startDate ? new Date(item.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'TBD'}
-                      </p>
+                      <div className="space-y-0.5 mb-2">
+                        {/* Duration & Dates in one line */}
+                        <p className="text-xs" style={{ color: '#6B7280' }}>
+                          {item.duration} days plan ({item.startDate ? new Date(item.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'TBD'} → {item.endDate ? new Date(item.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'TBD'})
+                        </p>
+                        
+                        {/* Skip Days */}
+                        {item.skipDates && item.skipDates.length > 0 && (
+                          <p className="text-xs" style={{ color: '#6B7280' }}>
+                            {item.skipDates.length} skip {item.skipDates.length === 1 ? 'day' : 'days'}
+                          </p>
+                        )}
+                        
+                        {/* Add-ons with price */}
+                        {item.addons && item.addons.length > 0 && (
+                          <p className="text-xs" style={{ color: '#6B7280' }}>
+                            {item.addons.length} add-on{item.addons.length === 1 ? '' : 's'} (₹{item.addonPrice || 0})
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-xs mb-2" style={{ color: '#6B7280' }}>{item.tagline || item.description}</p>
                     )}
@@ -231,6 +289,76 @@ export function FloatingCart() {
                           </div>
                         )}
                       </div>
+                      
+                      {/* Edit Button (only for subscription items) */}
+                      {item.type === 'subscription' && (
+                        <button
+                          onClick={() => {
+                            console.log('🔘 Edit button clicked!');
+                            console.log('📦 Full item data:', item);
+                            console.log('📦 Item keys:', Object.keys(item));
+                            
+                            // Ensure all required fields are present
+                            const editData = {
+                              ...item,
+                              // Ensure these fields exist with fallbacks
+                              productName: item.productName || item.name,
+                              name: item.name || item.productName,
+                              productId: item.productId || item.id || item._id,
+                              basePrice: item.basePrice || item.price || 0,
+                              productImage: item.productImage || item.image,
+                              image: item.image || item.productImage,
+                              productDescription: item.productDescription || item.description,
+                            };
+                            
+                            console.log('📝 Prepared edit data:', {
+                              productName: editData.productName,
+                              productId: editData.productId,
+                              basePrice: editData.basePrice,
+                              duration: editData.duration
+                            });
+                            
+                            // Store subscription data in localStorage for editing
+                            localStorage.setItem('editingSubscription', JSON.stringify(editData));
+                            
+                            // Verify it was saved
+                            const saved = localStorage.getItem('editingSubscription');
+                            const parsed = saved ? JSON.parse(saved) : null;
+                            console.log('✅ Verification - Saved data:', {
+                              exists: !!saved,
+                              productName: parsed?.productName,
+                              basePrice: parsed?.basePrice
+                            });
+                            
+                            // Close modal first
+                            setShowCartModal(false);
+                            
+                            // Navigate to summary page with a small delay to ensure localStorage is set
+                            // Add timestamp to force reload even if already on summary page
+                            setTimeout(() => {
+                              console.log('🚀 Navigating to summary page...');
+                              router.push(`/food/subscribe/summary?edit=${Date.now()}`);
+                            }, 50);
+                          }}
+                          className="px-3 py-1.5 rounded-lg font-semibold text-xs transition-all flex items-center gap-1"
+                          style={{ 
+                            backgroundColor: '#FEF2F2',
+                            color: '#E11D48',
+                            border: '1px solid #FEE2E2'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#FEE2E2';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '#FEF2F2';
+                          }}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                      )}
                       
                       {/* Quantity Selector (only for one-time items) */}
                       {item.type !== 'subscription' && (
@@ -291,8 +419,21 @@ export function FloatingCart() {
               </div>
               <button
                 onClick={() => {
+                  // Check if user is logged in
+                  const token = localStorage.getItem('token');
+                  const user = localStorage.getItem('user');
+                  
                   setShowCartModal(false);
-                  router.push('/food/checkout');
+                  
+                  if (!token || !user) {
+                    console.log('🔒 User not logged in, redirecting to auth page');
+                    // Redirect to auth page with return URL to delivery address
+                    router.push('/auth?returnUrl=/food/checkout');
+                  } else {
+                    console.log('✅ User logged in, navigating to delivery address');
+                    // User is logged in, go to delivery address selection
+                    router.push('/food/checkout');
+                  }
                 }}
                 className="w-full py-3 rounded-xl font-bold text-sm transition-all"
                 style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}

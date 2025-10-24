@@ -81,26 +81,31 @@ const initialState: SubscriptionState = {
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<SubscriptionState>(initialState);
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('subscriptionState');
-    if (saved) {
-      const parsedState = JSON.parse(saved);
-      console.log('📂 Loading from localStorage:', {
-        productId: parsedState.productId,
-        productName: parsedState.productName,
-        hasImage: !!parsedState.productImage,
-        hasDescription: !!parsedState.productDescription,
-        basePrice: parsedState.basePrice,
-        duration: parsedState.duration
-      });
-      setState(parsedState);
-    } else {
-      console.log('📂 No saved subscription state in localStorage');
+  // Lazy initialization - load from localStorage BEFORE setting initial state
+  const [state, setState] = useState<SubscriptionState>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('subscriptionState');
+      if (saved) {
+        try {
+          const parsedState = JSON.parse(saved);
+          console.log('📂 Lazy loading from localStorage:', {
+            productId: parsedState.productId,
+            productName: parsedState.productName,
+            hasImage: !!parsedState.productImage,
+            hasDescription: !!parsedState.productDescription,
+            basePrice: parsedState.basePrice,
+            duration: parsedState.duration
+          });
+          return parsedState;
+        } catch (error) {
+          console.error('Error parsing saved state:', error);
+        }
+      } else {
+        console.log('📂 No saved subscription state in localStorage, using initialState');
+      }
     }
-  }, []);
+    return initialState;
+  });
 
   // Save to localStorage on state change
   useEffect(() => {
