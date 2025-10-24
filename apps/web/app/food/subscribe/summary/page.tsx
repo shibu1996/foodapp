@@ -960,8 +960,8 @@ export default function SummaryPage() {
                     /* First Time - Two buttons: "Add to Cart" + "Checkout" */
                     <div className="grid grid-cols-2 gap-3">
                       {/* Add to Cart Button */}
-                      <button
-                        onClick={handleAddToCart}
+              <button
+                onClick={handleAddToCart}
                         disabled={addingToCart}
                         className="py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-1.5"
                         style={{ 
@@ -995,7 +995,7 @@ export default function SummaryPage() {
                             🛒 Add to Cart
                           </>
                         )}
-                      </button>
+              </button>
 
                       {/* Checkout Button */}
                       <button

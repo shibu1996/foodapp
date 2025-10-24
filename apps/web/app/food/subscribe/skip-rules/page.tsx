@@ -131,7 +131,7 @@ export default function SkipRulesPage() {
       router.push('/food/subscribe/summary');
     } else {
       console.log('🎯 Regular Mode - Navigating to addons');
-      router.push('/food/subscribe/addons');
+    router.push('/food/subscribe/addons');
     }
   };
 
@@ -638,8 +638,8 @@ export default function SkipRulesPage() {
         {/* Navigation Buttons */}
         <div className="flex gap-3">
           {!isEditMode && (
-            <button
-              onClick={() => router.back()}
+          <button
+            onClick={() => router.back()}
               className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
               style={{ 
                 background: '#FFFFFF',
@@ -652,9 +652,9 @@ export default function SkipRulesPage() {
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = '#FFFFFF';
               }}
-            >
-              Back
-            </button>
+          >
+            Back
+          </button>
           )}
           <button
             onClick={handleNext}

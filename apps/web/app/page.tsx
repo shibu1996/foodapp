@@ -23,7 +23,7 @@ export default function LandingPage() {
         <p className="text-sm font-medium" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
           Redirecting to FoodApp...
         </p>
-      </div>
+        </div>
     </div>
   );
 }

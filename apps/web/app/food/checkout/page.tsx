@@ -945,6 +945,7 @@ export default function CheckoutPage() {
                       Select Location
                     </label>
                     
+                    {/* @ts-ignore - Google Maps API types not fully compatible with React 19 */}
                     <StandaloneSearchBox onLoad={onSearchBoxLoad} onPlacesChanged={onPlacesChanged}>
                       <input
                         type="text"
