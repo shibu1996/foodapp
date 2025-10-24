@@ -727,13 +727,13 @@ export default function CheckoutPage() {
                   {/* Saved Addresses List */}
                 <div className="space-y-3 overflow-y-auto" style={{ maxHeight: '400px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                   {addresses.map((address) => (
-                    <button
+                    <div
                       key={address._id}
                       onClick={() => {
                         setSelectedAddressId(address._id);
                         setShowAllAddresses(false);
                       }}
-                      className="w-full p-5 rounded-xl border-2 transition-all text-left"
+                      className="w-full p-5 rounded-xl border-2 transition-all text-left cursor-pointer"
                       style={{
                         borderColor: selectedAddressId === address._id ? '#E11D48' : '#E5E7EB',
                         background: selectedAddressId === address._id ? '#FEF2F2' : '#FFFFFF'
@@ -791,7 +791,10 @@ export default function CheckoutPage() {
                         {/* Edit and Delete Buttons */}
                         <div className="flex flex-col gap-2">
                           <button
-                            onClick={(e) => handleEditAddress(address, e)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditAddress(address, e);
+                            }}
                             className="p-2 rounded-lg transition-all"
                             style={{ background: '#FEF2F2', color: '#E11D48' }}
                             onMouseEnter={(e) => e.currentTarget.style.background = '#FEE2E2'}
@@ -803,7 +806,10 @@ export default function CheckoutPage() {
                             </svg>
                           </button>
                           <button
-                            onClick={(e) => handleDeleteAddress(address._id, e)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteAddress(address._id, e);
+                            }}
                             className="p-2 rounded-lg transition-all"
                             style={{ background: '#FEF2F2', color: '#DC2626' }}
                             onMouseEnter={(e) => {
@@ -822,7 +828,7 @@ export default function CheckoutPage() {
                           </button>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
                 </div>
