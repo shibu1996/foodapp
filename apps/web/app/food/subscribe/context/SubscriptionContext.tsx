@@ -81,44 +81,48 @@ const initialState: SubscriptionState = {
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
-  // Lazy initialization - load from localStorage BEFORE setting initial state
-  const [state, setState] = useState<SubscriptionState>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('subscriptionState');
-      if (saved) {
-        try {
-          const parsedState = JSON.parse(saved);
-          console.log('📂 Lazy loading from localStorage:', {
-            productId: parsedState.productId,
-            productName: parsedState.productName,
-            hasImage: !!parsedState.productImage,
-            hasDescription: !!parsedState.productDescription,
-            basePrice: parsedState.basePrice,
-            duration: parsedState.duration
-          });
-          return parsedState;
-        } catch (error) {
-          console.error('Error parsing saved state:', error);
-        }
-      } else {
-        console.log('📂 No saved subscription state in localStorage, using initialState');
-      }
-    }
-    return initialState;
-  });
+  // Always start with initialState to prevent hydration errors
+  const [state, setState] = useState<SubscriptionState>(initialState);
+  const [mounted, setMounted] = useState(false);
 
-  // Save to localStorage on state change
+  // Load from localStorage after mount (client-side only)
   useEffect(() => {
-    console.log('💾 Saving to localStorage:', {
-      productId: state.productId,
-      productName: state.productName,
-      hasImage: !!state.productImage,
-      hasDescription: !!state.productDescription,
-      basePrice: state.basePrice,
-      duration: state.duration
-    });
-    localStorage.setItem('subscriptionState', JSON.stringify(state));
-  }, [state]);
+    const saved = localStorage.getItem('subscriptionState');
+    if (saved) {
+      try {
+        const parsedState = JSON.parse(saved);
+        console.log('📂 Loading from localStorage after mount:', {
+          productId: parsedState.productId,
+          productName: parsedState.productName,
+          hasImage: !!parsedState.productImage,
+          hasDescription: !!parsedState.productDescription,
+          basePrice: parsedState.basePrice,
+          duration: parsedState.duration
+        });
+        setState(parsedState);
+      } catch (error) {
+        console.error('Error parsing saved state:', error);
+      }
+    } else {
+      console.log('📂 No saved subscription state in localStorage');
+    }
+    setMounted(true);
+  }, []);
+
+  // Save to localStorage on state change (only after mounted)
+  useEffect(() => {
+    if (mounted) {
+      console.log('💾 Saving to localStorage:', {
+        productId: state.productId,
+        productName: state.productName,
+        hasImage: !!state.productImage,
+        hasDescription: !!state.productDescription,
+        basePrice: state.basePrice,
+        duration: state.duration
+      });
+      localStorage.setItem('subscriptionState', JSON.stringify(state));
+    }
+  }, [state, mounted]);
 
   const updateState = (updates: Partial<SubscriptionState>) => {
     console.log('🔄 Subscription Context - Updating state:', updates);

@@ -61,15 +61,8 @@ export default function SummaryPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  // Initialize isLoadingEditData based on localStorage check
-  const [isLoadingEditData, setIsLoadingEditData] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const hasEditData = !!localStorage.getItem('editingSubscription');
-      console.log('🏁 Initial check - editingSubscription exists:', hasEditData);
-      return hasEditData;
-    }
-    return false;
-  });
+  // Always start with false to prevent hydration errors
+  const [isLoadingEditData, setIsLoadingEditData] = useState(false);
 
   // Check if this product already exists in cart (Edit mode)
   useEffect(() => {
@@ -143,6 +136,11 @@ export default function SummaryPage() {
 
   // Load subscription data from localStorage on mount
   useEffect(() => {
+    // Check for edit data and set loading state
+    const editingData = localStorage.getItem('editingSubscription');
+    if (editingData) {
+      setIsLoadingEditData(true);
+    }
     loadEditData();
   }, []);
 
