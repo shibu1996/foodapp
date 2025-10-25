@@ -84,7 +84,7 @@ export function ProfileDropdown({ userName, onLogout }: ProfileDropdownProps) {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 p-2 rounded-lg transition-all border"
+        className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-lg transition-all border"
         style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
         onMouseEnter={(e) => {
           e.currentTarget.style.borderColor = '#E11D48';
@@ -95,7 +95,7 @@ export function ProfileDropdown({ userName, onLogout }: ProfileDropdownProps) {
           e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
-        <div className="w-7 h-7 rounded-full text-white flex items-center justify-center font-bold text-xs"
+        <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full text-white flex items-center justify-center font-bold text-[10px] sm:text-xs"
           style={{ backgroundColor: '#E11D48' }}
         >
           {getInitials(userName)}
@@ -122,20 +122,20 @@ export function ProfileDropdown({ userName, onLogout }: ProfileDropdownProps) {
           />
           
           {/* Dropdown */}
-          <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden"
+          <div className="absolute right-0 mt-2 w-56 sm:w-64 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden"
             style={{ borderColor: '#E5E7EB', fontFamily: 'Poppins, sans-serif' }}
           >
             {/* Header */}
-            <div className="px-4 py-3 border-b" style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' }}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full text-white flex items-center justify-center font-bold text-sm"
+            <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b" style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' }}>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full text-white flex items-center justify-center font-bold text-xs sm:text-sm"
                   style={{ backgroundColor: '#E11D48' }}
                 >
                   {getInitials(userName)}
                 </div>
-                <div>
-                  <p className="text-sm font-bold truncate" style={{ color: '#0E1214' }}>{userName}</p>
-                  <p className="text-xs" style={{ color: '#6B7280' }}>View Profile</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-bold truncate" style={{ color: '#0E1214' }}>{userName}</p>
+                  <p className="text-[10px] sm:text-xs" style={{ color: '#6B7280' }}>View Profile</p>
                 </div>
               </div>
             </div>
@@ -149,7 +149,7 @@ export function ProfileDropdown({ userName, onLogout }: ProfileDropdownProps) {
                     item.onClick();
                     setIsOpen(false);
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 transition-all text-left"
+                  className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 transition-all text-left"
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = '#F9FAFB';
                   }}
@@ -157,7 +157,7 @@ export function ProfileDropdown({ userName, onLogout }: ProfileDropdownProps) {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                     style={{ 
                       backgroundColor: `${item.color}15`,
                       color: item.color 
@@ -165,7 +165,7 @@ export function ProfileDropdown({ userName, onLogout }: ProfileDropdownProps) {
                   >
                     {getIcon(item.type)}
                   </div>
-                  <span className="text-xs font-medium" style={{ color: '#0E1214' }}>
+                  <span className="text-[11px] sm:text-xs font-medium" style={{ color: '#0E1214' }}>
                     {item.label}
                   </span>
                 </button>

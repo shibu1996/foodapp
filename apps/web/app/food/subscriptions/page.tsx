@@ -50,6 +50,12 @@ interface Subscription {
     price: number;
   }[];
   slotChangeDeadline?: string;
+  paidAddons?: {
+    name: string;
+    price: number;
+    days: number;
+    paidAt: Date;
+  }[];
 }
 
 export default function MySubscriptionsPage() {
@@ -82,10 +88,14 @@ export default function MySubscriptionsPage() {
   
   // Slot change
   const [newSlot, setNewSlot] = useState<string>('');
+  const [slotChangeScope, setSlotChangeScope] = useState<'tomorrow' | 'all'>('tomorrow');
   
   // Addons
   const [selectedAddons, setSelectedAddons] = useState<{[key: string]: number}>({});
   const [addonDays, setAddonDays] = useState<number>(1);
+
+  // Filter state
+  const [activeFilter, setActiveFilter] = useState<'active' | 'cancelled' | 'completed' | 'payment-failed'>('active');
 
   // Toast helper function
   const showToastMessage = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
@@ -305,6 +315,72 @@ export default function MySubscriptionsPage() {
         ),
         availableAddons: [],
         slotChangeDeadline: '6:00 PM'
+      },
+      {
+        _id: '4',
+        subscriptionNumber: 'SUB004',
+        productId: 'prod4',
+        productName: 'Chicken Biryani',
+        productImage: getFoodImage('Biryani'),
+        duration: 10,
+        startDate: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000),
+        endDate: new Date(today.getTime() + 4 * 24 * 60 * 60 * 1000),
+        deliverySlot: '1:00 PM - 2:00 PM',
+        addons: [{ name: 'Raita', price: 30 }],
+        skipDays: [],
+        maxSkipDays: 2,
+        status: 'cancelled',
+        totalAmount: 1200,
+        paidAmount: 1200,
+        pendingAmount: 0,
+        paymentMethod: 'Online',
+        paymentStatus: 'refund-pending',
+        deliveryCount: 10,
+        completedDeliveries: 6,
+        autoRenewal: false,
+        createdAt: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000),
+        type: 'regular',
+        deliveryProgress: generateProgress(
+          new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000),
+          6,
+          [],
+          'regular'
+        ),
+        availableAddons: [],
+        slotChangeDeadline: '6:00 PM'
+      },
+      {
+        _id: '5',
+        subscriptionNumber: 'SUB005',
+        productId: 'prod5',
+        productName: 'South Indian Thali',
+        productImage: getFoodImage('Thali'),
+        duration: 20,
+        startDate: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000),
+        endDate: new Date(today.getTime() + 18 * 24 * 60 * 60 * 1000),
+        deliverySlot: '8:00 AM - 9:00 AM',
+        addons: [],
+        skipDays: [],
+        maxSkipDays: 3,
+        status: 'payment-failed',
+        totalAmount: 1900,
+        paidAmount: 0,
+        pendingAmount: 1900,
+        paymentMethod: 'Online',
+        paymentStatus: 'failed',
+        deliveryCount: 20,
+        completedDeliveries: 0,
+        autoRenewal: false,
+        createdAt: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000),
+        type: 'regular',
+        deliveryProgress: generateProgress(
+          new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000),
+          0,
+          [],
+          'regular'
+        ),
+        availableAddons: [],
+        slotChangeDeadline: '6:00 PM'
       }
     ];
 
@@ -344,13 +420,6 @@ export default function MySubscriptionsPage() {
 
   const getProgressPercentage = (sub: Subscription) => {
     return Math.round((sub.completedDeliveries / sub.deliveryCount) * 100);
-  };
-
-  const canChangeSlot = () => {
-    const now = new Date();
-    const deadline = new Date();
-    deadline.setHours(18, 0, 0, 0); // 6 PM
-    return now < deadline;
   };
 
   // Meal Selection Modal
@@ -397,6 +466,7 @@ export default function MySubscriptionsPage() {
     );
     
     setSubscriptions(updated);
+    setSelectedSubscription(updated.find(s => s._id === selectedSubscription._id) || null);
     setShowMealModal(false);
     showToastMessage('Meal selection updated for tomorrow!', 'success');
   };
@@ -453,12 +523,34 @@ export default function MySubscriptionsPage() {
 
   // Slot Change Modal
   const handleOpenSlotModal = (sub: Subscription) => {
-    if (!canChangeSlot()) {
-      showToastMessage('Slot change deadline has passed for today (6 PM)', 'warning');
-      return;
+    // Check 3:30 AM deadline for today's slot change
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const nextPendingDelivery = sub.deliveryProgress.find(d => 
+      d.status === 'pending' && new Date(d.date) >= today
+    );
+    
+    if (nextPendingDelivery) {
+      const deliveryDate = new Date(nextPendingDelivery.date);
+      deliveryDate.setHours(0, 0, 0, 0);
+      const isToday = deliveryDate.getTime() === today.getTime();
+      
+      if (isToday) {
+        const now = new Date();
+        const deadlineTime = new Date(deliveryDate);
+        deadlineTime.setHours(3, 30, 0, 0);
+        
+        if (now >= deadlineTime) {
+          showToastMessage('Slot change deadline has passed for today (3:30 AM)', 'warning');
+          return;
+        }
+      }
     }
+    
     setSelectedSubscription(sub);
     setNewSlot(sub.deliverySlot);
+    setSlotChangeScope('tomorrow'); // Reset to default
     setShowSlotModal(true);
   };
 
@@ -473,7 +565,11 @@ export default function MySubscriptionsPage() {
     
     setSubscriptions(updated);
     setShowSlotModal(false);
-    showToastMessage('Delivery slot updated for tomorrow!', 'success');
+    
+    const message = slotChangeScope === 'tomorrow' 
+      ? 'Delivery slot updated for tomorrow!' 
+      : 'Delivery slot updated for all remaining days!';
+    showToastMessage(message, 'success');
   };
 
   // Addons Modal
@@ -510,11 +606,39 @@ export default function MySubscriptionsPage() {
   };
 
   const handlePayAddons = () => {
+    if (!selectedSubscription) return;
+    
     const total = calculateAddonTotal();
     if (total === 0) {
       showToastMessage('Please select at least one add-on', 'warning');
       return;
     }
+    
+    // Create paid addons array
+    const newPaidAddons = Object.entries(selectedAddons).flatMap(([name, qty]) => {
+      const addon = selectedSubscription.availableAddons?.find(a => a.name === name);
+      if (!addon) return [];
+      
+      return Array.from({ length: qty }, () => ({
+        name: addon.name,
+        price: addon.price,
+        days: addonDays,
+        paidAt: new Date()
+      }));
+    });
+    
+    // Update subscription with paid addons
+    const updated = subscriptions.map(sub => 
+      sub._id === selectedSubscription._id
+        ? { 
+            ...sub, 
+            paidAddons: [...(sub.paidAddons || []), ...newPaidAddons]
+          }
+        : sub
+    );
+    
+    setSubscriptions(updated);
+    setSelectedSubscription(updated.find(s => s._id === selectedSubscription._id) || null);
     
     // Simulate payment
     showToastMessage(`Payment of ₹${total} successful! Add-ons will be added to your next ${addonDays} ${addonDays === 1 ? 'delivery' : 'deliveries'}.`, 'success');
@@ -676,10 +800,126 @@ export default function MySubscriptionsPage() {
               </Link>
             </div>
           ) : (
-            <div className="space-y-4">
-              {subscriptions.map((sub) => {
-                const statusColor = getStatusColor(sub.status);
-                const isActive = sub.status === 'active';
+            <>
+              {/* Filter Tabs */}
+              <div className="flex gap-2 mb-6 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <button
+                  onClick={() => setActiveFilter('active')}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all"
+                  style={{
+                    backgroundColor: activeFilter === 'active' ? '#E11D48' : '#FFFFFF',
+                    color: activeFilter === 'active' ? '#FFFFFF' : '#6B7280',
+                    border: `1.5px solid ${activeFilter === 'active' ? '#E11D48' : '#E5E7EB'}`
+                  }}
+                  onMouseEnter={(e: any) => {
+                    if (activeFilter !== 'active') {
+                      e.currentTarget.style.borderColor = '#E11D48';
+                      e.currentTarget.style.color = '#E11D48';
+                    }
+                  }}
+                  onMouseLeave={(e: any) => {
+                    if (activeFilter !== 'active') {
+                      e.currentTarget.style.borderColor = '#E5E7EB';
+                      e.currentTarget.style.color = '#6B7280';
+                    }
+                  }}
+                >
+                  Active ({subscriptions.filter(s => s.status === 'active').length})
+                </button>
+                <button
+                  onClick={() => setActiveFilter('completed')}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all"
+                  style={{
+                    backgroundColor: activeFilter === 'completed' ? '#E11D48' : '#FFFFFF',
+                    color: activeFilter === 'completed' ? '#FFFFFF' : '#6B7280',
+                    border: `1.5px solid ${activeFilter === 'completed' ? '#E11D48' : '#E5E7EB'}`
+                  }}
+                  onMouseEnter={(e: any) => {
+                    if (activeFilter !== 'completed') {
+                      e.currentTarget.style.borderColor = '#E11D48';
+                      e.currentTarget.style.color = '#E11D48';
+                    }
+                  }}
+                  onMouseLeave={(e: any) => {
+                    if (activeFilter !== 'completed') {
+                      e.currentTarget.style.borderColor = '#E5E7EB';
+                      e.currentTarget.style.color = '#6B7280';
+                    }
+                  }}
+                >
+                  Completed ({subscriptions.filter(s => s.status === 'completed').length})
+                </button>
+                <button
+                  onClick={() => setActiveFilter('cancelled')}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all"
+                  style={{
+                    backgroundColor: activeFilter === 'cancelled' ? '#E11D48' : '#FFFFFF',
+                    color: activeFilter === 'cancelled' ? '#FFFFFF' : '#6B7280',
+                    border: `1.5px solid ${activeFilter === 'cancelled' ? '#E11D48' : '#E5E7EB'}`
+                  }}
+                  onMouseEnter={(e: any) => {
+                    if (activeFilter !== 'cancelled') {
+                      e.currentTarget.style.borderColor = '#E11D48';
+                      e.currentTarget.style.color = '#E11D48';
+                    }
+                  }}
+                  onMouseLeave={(e: any) => {
+                    if (activeFilter !== 'cancelled') {
+                      e.currentTarget.style.borderColor = '#E5E7EB';
+                      e.currentTarget.style.color = '#6B7280';
+                    }
+                  }}
+                >
+                  Cancelled ({subscriptions.filter(s => s.status === 'cancelled').length})
+                </button>
+                <button
+                  onClick={() => setActiveFilter('payment-failed')}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all"
+                  style={{
+                    backgroundColor: activeFilter === 'payment-failed' ? '#E11D48' : '#FFFFFF',
+                    color: activeFilter === 'payment-failed' ? '#FFFFFF' : '#6B7280',
+                    border: `1.5px solid ${activeFilter === 'payment-failed' ? '#E11D48' : '#E5E7EB'}`
+                  }}
+                  onMouseEnter={(e: any) => {
+                    if (activeFilter !== 'payment-failed') {
+                      e.currentTarget.style.borderColor = '#E11D48';
+                      e.currentTarget.style.color = '#E11D48';
+                    }
+                  }}
+                  onMouseLeave={(e: any) => {
+                    if (activeFilter !== 'payment-failed') {
+                      e.currentTarget.style.borderColor = '#E5E7EB';
+                      e.currentTarget.style.color = '#6B7280';
+                    }
+                  }}
+                >
+                  Payment Failed ({subscriptions.filter(s => s.status === 'payment-failed').length})
+                </button>
+              </div>
+
+              {/* Subscriptions List */}
+              {subscriptions.filter(sub => sub.status === activeFilter).length === 0 ? (
+                <div className="text-center py-16 bg-white rounded-xl border" style={{ borderColor: '#E5E7EB' }}>
+                  <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}>
+                    <svg className="w-8 h-8" style={{ color: '#E11D48' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-bold mb-2" style={{ color: '#0E1214' }}>
+                    No {activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1).replace('-', ' ')} Subscriptions
+                  </h3>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    {activeFilter === 'active' && 'You don\'t have any active subscriptions'}
+                    {activeFilter === 'completed' && 'No completed subscriptions yet'}
+                    {activeFilter === 'cancelled' && 'No cancelled subscriptions'}
+                    {activeFilter === 'payment-failed' && 'No payment failed subscriptions'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {subscriptions.filter(sub => sub.status === activeFilter).map((sub) => {
+                    const statusColor = getStatusColor(sub.status);
+                    const isActive = sub.status === 'active';
                 const progressPercentage = getProgressPercentage(sub);
                 const upcomingDates = sub.deliveryProgress.slice(sub.completedDeliveries, sub.completedDeliveries + 10);
 
@@ -792,6 +1032,13 @@ export default function MySubscriptionsPage() {
                               deliveryDate.setHours(0, 0, 0, 0);
                               const isPast = deliveryDate < today;
                               const isClickable = !isPast && delivery.status !== 'completed';
+                              
+                              // Check if this is the next pending delivery (highlighted in meal section)
+                              const nextPendingDelivery = sub.deliveryProgress.find(d => 
+                                d.status === 'pending' && new Date(d.date) >= today
+                              );
+                              const isNextDelivery = nextPendingDelivery && 
+                                deliveryDate.getTime() === new Date(nextPendingDelivery.date).getTime();
 
                               return (
                                 <button
@@ -803,42 +1050,60 @@ export default function MySubscriptionsPage() {
                                     }
                                   }}
                                   disabled={!isClickable}
-                                  className="flex-shrink-0 w-14 p-1.5 rounded-lg text-center border transition-all"
+                                  className="flex-shrink-0 w-14 p-1.5 rounded-lg text-center transition-all"
                                   style={{
                                     backgroundColor: 
+                                      isNextDelivery ? '#FEF3C7' :
                                       delivery.status === 'completed' ? '#D1FAE5' :
                                       delivery.status === 'skipped' ? '#FEE2E2' : '#F9FAFB',
+                                    borderWidth: isNextDelivery ? '4px' : '1px',
+                                    borderStyle: 'solid',
                                     borderColor:
+                                      isNextDelivery ? '#F59E0B' :
                                       delivery.status === 'completed' ? '#059669' :
                                       delivery.status === 'skipped' ? '#DC2626' : '#E5E7EB',
                                     cursor: isClickable ? 'pointer' : 'default',
-                                    opacity: isPast && delivery.status === 'pending' ? 0.5 : 1
+                                    opacity: isPast && delivery.status === 'pending' ? 0.5 : 1,
+                                    boxShadow: isNextDelivery ? '0 0 0 4px rgba(245, 158, 11, 0.25), 0 6px 12px rgba(245, 158, 11, 0.4)' : 'none',
+                                    transform: isNextDelivery ? 'scale(1.15)' : 'scale(1)',
+                                    position: 'relative',
+                                    zIndex: isNextDelivery ? 10 : 1
                                   }}
                                   onMouseEnter={(e: any) => {
-                                    if (isClickable) {
+                                    if (isClickable && !isNextDelivery) {
                                       e.currentTarget.style.borderColor = '#E11D48';
                                       e.currentTarget.style.transform = 'scale(1.05)';
+                                    } else if (isClickable && isNextDelivery) {
+                                      e.currentTarget.style.transform = 'scale(1.20)';
+                                      e.currentTarget.style.boxShadow = '0 0 0 4px rgba(245, 158, 11, 0.35), 0 8px 16px rgba(245, 158, 11, 0.5)';
                                     }
                                   }}
                                   onMouseLeave={(e: any) => {
-                                    if (isClickable) {
+                                    if (isClickable && !isNextDelivery) {
                                       e.currentTarget.style.borderColor = 
                                         delivery.status === 'skipped' ? '#DC2626' : '#E5E7EB';
                                       e.currentTarget.style.transform = 'scale(1)';
+                                    } else if (isNextDelivery) {
+                                      e.currentTarget.style.transform = 'scale(1.15)';
+                                      e.currentTarget.style.boxShadow = '0 0 0 4px rgba(245, 158, 11, 0.25), 0 6px 12px rgba(245, 158, 11, 0.4)';
                                     }
                                   }}
                                 >
                                   <div className="text-xs font-bold mb-1" style={{ 
                                     color: 
+                                      isNextDelivery ? '#D97706' :
                                       delivery.status === 'completed' ? '#059669' :
-                                      delivery.status === 'skipped' ? '#DC2626' : '#6B7280'
+                                      delivery.status === 'skipped' ? '#DC2626' : '#6B7280',
+                                    fontSize: isNextDelivery ? '0.8rem' : '0.75rem'
                                   }}>
                                     {delivery.date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).split(' ')[1]}
                                   </div>
-                                  <div className="text-lg font-bold mb-1" style={{ 
+                                  <div className="font-bold mb-1" style={{ 
                                     color: 
+                                      isNextDelivery ? '#B45309' :
                                       delivery.status === 'completed' ? '#059669' :
-                                      delivery.status === 'skipped' ? '#DC2626' : '#0E1214'
+                                      delivery.status === 'skipped' ? '#DC2626' : '#0E1214',
+                                    fontSize: isNextDelivery ? '1.25rem' : '1.125rem'
                                   }}>
                                     {delivery.date.getDate()}
                                   </div>
@@ -854,7 +1119,13 @@ export default function MySubscriptionsPage() {
                                       </svg>
                                     )}
                                     {delivery.status === 'pending' && (
-                                      <div className="w-4 h-4 rounded-full border-2" style={{ borderColor: '#D1D5DB' }}></div>
+                                      isNextDelivery ? (
+                                        <svg className="w-5 h-5" style={{ color: '#D97706' }} fill="currentColor" viewBox="0 0 20 20">
+                                          <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
+                                        </svg>
+                                      ) : (
+                                        <div className="w-4 h-4 rounded-full border-2" style={{ borderColor: '#D1D5DB' }}></div>
+                                      )
                                     )}
                                   </div>
                                 </button>
@@ -862,6 +1133,104 @@ export default function MySubscriptionsPage() {
                             })}
                           </div>
                         </div>
+
+                        {/* Today's/Tomorrow's Meal (Only for Meal Plan) */}
+                        {sub.type === 'meal-plan' && sub.dailyMenu && sub.dailyMenu.length > 0 && (() => {
+                          // Find next pending delivery
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          
+                          const nextPendingDelivery = sub.deliveryProgress.find(d => 
+                            d.status === 'pending' && new Date(d.date) >= today
+                          );
+                          
+                          if (!nextPendingDelivery) return null;
+                          
+                          const deliveryDate = new Date(nextPendingDelivery.date);
+                          deliveryDate.setHours(0, 0, 0, 0);
+                          const isToday = deliveryDate.getTime() === today.getTime();
+                          
+                          // Check if customize is allowed (before 3:30 AM)
+                          const now = new Date();
+                          const deadlineTime = new Date(deliveryDate);
+                          deadlineTime.setHours(3, 30, 0, 0); // 3:30 AM deadline
+                          
+                          const canCustomize = isToday ? now < deadlineTime : true;
+                          const mealLabel = isToday ? "Today's Meal" : "Tomorrow's Meal";
+                          
+                          // Check if delivery has happened but meal not updated
+                          const [startTime] = sub.deliverySlot.split(' - ');
+                          const [hours, minutes] = startTime.split(':');
+                          const isPM = startTime.includes('PM');
+                          let deliveryHour = parseInt(hours);
+                          if (isPM && deliveryHour !== 12) deliveryHour += 12;
+                          if (!isPM && deliveryHour === 12) deliveryHour = 0;
+                          
+                          const deliveryDateTime = new Date(deliveryDate);
+                          deliveryDateTime.setHours(deliveryHour, parseInt(minutes) || 0, 0, 0);
+                          
+                          const deliveryHappened = isToday && now > deliveryDateTime;
+                          const mealUpdated = nextPendingDelivery.status === 'completed' || nextPendingDelivery.meal;
+                          
+                          return (
+                            <div className="mb-3 p-3 rounded-lg border" style={{ backgroundColor: '#FFFBEB', borderColor: '#F59E0B' }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <svg className="w-4 h-4" style={{ color: '#D97706' }} fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
+                                  </svg>
+                                  <h4 className="text-xs font-bold" style={{ color: '#D97706' }}>
+                                    {mealLabel}
+                                  </h4>
+                                  {isToday && (
+                                    <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                                      Delivering {sub.deliverySlot.split(' - ')[0]}
+                                    </span>
+                                  )}
+                                </div>
+                                {deliveryHappened && !mealUpdated ? (
+                                  <span className="text-xs font-semibold italic" style={{ color: '#92400E', opacity: 0.7 }}>
+                                    Processing...
+                                  </span>
+                                ) : canCustomize ? (
+                                  <button
+                                    onClick={() => handleOpenMealModal(sub)}
+                                    className="text-xs font-semibold underline transition-all"
+                                    style={{ color: '#D97706' }}
+                                    onMouseEnter={(e: any) => e.currentTarget.style.color = '#B45309'}
+                                    onMouseLeave={(e: any) => e.currentTarget.style.color = '#D97706'}
+                                  >
+                                    Customize
+                                  </button>
+                                ) : (
+                                  <span className="text-xs font-semibold" style={{ color: '#92400E', opacity: 0.5 }}>
+                                    Deadline passed
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {deliveryHappened && !mealUpdated ? (
+                                <div className="p-3 rounded-lg" style={{ backgroundColor: '#FEF3C7' }}>
+                                  <p className="text-xs font-medium text-center" style={{ color: '#92400E' }}>
+                                    Meal not updated yet... please wait
+                                  </p>
+                                </div>
+                              ) : (
+                                <>
+                                  <p className="text-xs font-medium leading-relaxed" style={{ color: '#78350F' }}>
+                                    {(sub.dailyMenu[0].selectedItems || sub.dailyMenu[0].defaultItems).slice(0, 4).join(', ')}
+                                    {(sub.dailyMenu[0].selectedItems || sub.dailyMenu[0].defaultItems).length > 4 && 
+                                      ` +${(sub.dailyMenu[0].selectedItems || sub.dailyMenu[0].defaultItems).length - 4} more`
+                                    }
+                                  </p>
+                                  <p className="text-xs mt-1.5 italic" style={{ color: '#92400E' }}>
+                                    {sub.dailyMenu[0].selectedItems ? '✓ Customized' : 'Default menu'}
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Action Buttons - Compact Grid */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-3">
@@ -883,37 +1252,6 @@ export default function MySubscriptionsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                             <span className="text-xs font-semibold">Calendar</span>
-                          </button>
-
-                          {/* Meal Selection (only for meal-plan) */}
-                          {sub.type === 'meal-plan' && sub.dailyMenu && (
-                            <button
-                              onClick={() => handleOpenMealModal(sub)}
-                              className="p-2 rounded-lg transition-all text-center border flex items-center justify-center gap-1"
-                              style={{ backgroundColor: '#FEF2F2', color: '#E11D48', borderColor: '#E11D48' }}
-                              onMouseEnter={(e: any) => e.currentTarget.style.backgroundColor = '#FEE2E2'}
-                              onMouseLeave={(e: any) => e.currentTarget.style.backgroundColor = '#FEF2F2'}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                              </svg>
-                              <span className="text-xs font-semibold">Meal</span>
-                            </button>
-                          )}
-
-                          {/* Skip Tomorrow */}
-                          <button
-                            onClick={() => handleOpenSkipModal(sub)}
-                            disabled={sub.skipDays.length >= sub.maxSkipDays}
-                            className="p-2 rounded-lg transition-all text-center border disabled:opacity-50 flex items-center justify-center gap-1"
-                            style={{ backgroundColor: '#FEF3C7', color: '#D97706', borderColor: '#F59E0B' }}
-                            onMouseEnter={(e: any) => !e.currentTarget.disabled && (e.currentTarget.style.backgroundColor = '#FDE68A')}
-                            onMouseLeave={(e: any) => !e.currentTarget.disabled && (e.currentTarget.style.backgroundColor = '#FEF3C7')}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            <span className="text-xs font-semibold">Skip</span>
                           </button>
 
                           {/* Change Slot */}
@@ -947,7 +1285,7 @@ export default function MySubscriptionsPage() {
 
                         {/* Current Add-ons - Compact */}
                         {sub.addons.length > 0 && (
-                          <div className="flex items-center gap-2 flex-wrap text-xs">
+                          <div className="flex items-center gap-2 flex-wrap text-xs mb-3">
                             <span className="font-semibold" style={{ color: '#6B7280' }}>Add-ons:</span>
                             {sub.addons.map((addon, idx) => (
                               <span key={idx} className="px-2 py-0.5 rounded font-medium" style={{ backgroundColor: '#FEF2F2', color: '#E11D48' }}>
@@ -956,12 +1294,45 @@ export default function MySubscriptionsPage() {
                             ))}
                           </div>
                         )}
+
+                        {/* Paid Add-ons (Recently Added) */}
+                        {sub.paidAddons && sub.paidAddons.length > 0 && (
+                          <div className="p-3 rounded-lg border" style={{ backgroundColor: '#F0FDF4', borderColor: '#10B981' }}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <svg className="w-4 h-4" style={{ color: '#10B981' }} fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span className="text-xs font-bold" style={{ color: '#10B981' }}>
+                                Recently Added Add-ons
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {sub.paidAddons.map((addon, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-xs">
+                                  <span className="font-semibold" style={{ color: '#059669' }}>
+                                    {addon.name}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 py-0.5 rounded font-medium" style={{ backgroundColor: '#D1FAE5', color: '#059669' }}>
+                                      {addon.days} {addon.days === 1 ? 'day' : 'days'}
+                                    </span>
+                                    <span className="font-bold" style={{ color: '#059669' }}>
+                                      ₹{addon.price}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
                 );
               })}
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -1105,24 +1476,37 @@ export default function MySubscriptionsPage() {
         )}
 
         {/* Slot Change Modal */}
-        {showSlotModal && selectedSubscription && (
-          <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
-            onClick={() => setShowSlotModal(false)}
-          >
+        {showSlotModal && selectedSubscription && (() => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          const nextPendingDelivery = selectedSubscription.deliveryProgress.find(d => 
+            d.status === 'pending' && new Date(d.date) >= today
+          );
+          
+          const deliveryDate = nextPendingDelivery ? new Date(nextPendingDelivery.date) : new Date();
+          deliveryDate.setHours(0, 0, 0, 0);
+          const isToday = deliveryDate.getTime() === today.getTime();
+          const slotLabel = isToday ? "today's" : "tomorrow's";
+          
+          return (
             <div 
-              className="bg-white rounded-2xl p-6 max-w-md w-full"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+              onClick={() => setShowSlotModal(false)}
             >
-              <h3 className="text-lg font-bold mb-2" style={{ color: '#0E1214' }}>
-                Change Delivery Slot
-              </h3>
-              <p className="text-xs mb-4" style={{ color: '#6B7280' }}>
-                Change slot before {selectedSubscription.slotChangeDeadline} for tomorrow's delivery
-              </p>
+              <div 
+                className="bg-white rounded-2xl p-6 max-w-md w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-bold mb-2" style={{ color: '#0E1214' }}>
+                  Change Delivery Slot
+                </h3>
+                <p className="text-xs mb-4" style={{ color: '#6B7280' }}>
+                  Change slot before 3:30 AM for {slotLabel} delivery
+                </p>
 
-              <div className="mb-6">
+              <div className="mb-4">
                 <label className="text-sm font-semibold mb-2 block" style={{ color: '#0E1214' }}>
                   Select New Slot
                 </label>
@@ -1139,6 +1523,41 @@ export default function MySubscriptionsPage() {
                   <option value="7:00 PM - 8:00 PM">7:00 PM - 8:00 PM</option>
                   <option value="8:00 PM - 9:00 PM">8:00 PM - 9:00 PM</option>
                 </select>
+              </div>
+
+              <div className="mb-6">
+                <label className="text-sm font-semibold mb-2 block" style={{ color: '#0E1214' }}>
+                  Apply Change To
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setSlotChangeScope('tomorrow')}
+                    className="px-4 py-3 rounded-lg font-semibold text-sm transition-all border"
+                    style={{
+                      backgroundColor: slotChangeScope === 'tomorrow' ? '#EEF2FF' : '#FFFFFF',
+                      color: slotChangeScope === 'tomorrow' ? '#6366F1' : '#6B7280',
+                      borderColor: slotChangeScope === 'tomorrow' ? '#6366F1' : '#E5E7EB'
+                    }}
+                  >
+                    {isToday ? 'Today Only' : 'Tomorrow Only'}
+                  </button>
+                  <button
+                    onClick={() => setSlotChangeScope('all')}
+                    className="px-4 py-3 rounded-lg font-semibold text-sm transition-all border"
+                    style={{
+                      backgroundColor: slotChangeScope === 'all' ? '#EEF2FF' : '#FFFFFF',
+                      color: slotChangeScope === 'all' ? '#6366F1' : '#6B7280',
+                      borderColor: slotChangeScope === 'all' ? '#6366F1' : '#E5E7EB'
+                    }}
+                  >
+                    All Days
+                  </button>
+                </div>
+                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
+                  {slotChangeScope === 'tomorrow' 
+                    ? `Change slot for ${slotLabel} delivery only` 
+                    : 'Change slot for all remaining deliveries'}
+                </p>
               </div>
 
               <div className="flex gap-3">
@@ -1163,7 +1582,8 @@ export default function MySubscriptionsPage() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Add-ons Modal */}
         {showAddonsModal && selectedSubscription && selectedSubscription.availableAddons && (

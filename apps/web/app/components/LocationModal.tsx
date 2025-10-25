@@ -139,9 +139,9 @@ export function LocationModal({ isOpen, onClose, onSelectLocation, currentLocati
                 Saved Addresses
               </h3>
               <div className="space-y-3 max-h-96 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {addresses.map((address) => (
+                {addresses.map((address, index) => (
                   <div
-                    key={address._id}
+                    key={address._id || `address-${index}`}
                     onClick={() => handleSelectAddress(address)}
                     className="p-4 rounded-xl border-2 cursor-pointer transition-all"
                     style={{ 
