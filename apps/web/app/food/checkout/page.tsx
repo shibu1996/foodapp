@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { GoogleMap, Marker, StandaloneSearchBox, useLoadScript } from '@react-google-maps/api';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FoodHeader } from '../../components/FoodHeader';
+import { AddressForm } from '../../components/AddressForm';
 
 interface Address {
   _id: string;
@@ -22,21 +22,9 @@ interface Address {
   recipientPhone?: string;
 }
 
-const libraries: ("places" | "geometry")[] = ['places'];
-
-const mapContainerStyle = {
-  width: '100%',
-  height: '300px',
-  borderRadius: '12px'
-};
-
-const defaultCenter = {
-  lat: 28.6139,
-  lng: 77.2090
-};
-
 export default function CheckoutPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -47,9 +35,6 @@ export default function CheckoutPage() {
   const [cart, setCart] = useState<any[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'cod' | 'wallet'>('upi');
   const [placingOrder, setPlacingOrder] = useState(false);
-  const [orderFor, setOrderFor] = useState<'myself' | 'someone'>('myself');
-  const [recipientName, setRecipientName] = useState('');
-  const [recipientPhone, setRecipientPhone] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -58,34 +43,15 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [couponError, setCouponError] = useState('');
   const [showAllAddresses, setShowAllAddresses] = useState(false);
-
-  // Map state
-  const [center, setCenter] = useState(defaultCenter);
-  const [markerPosition, setMarkerPosition] = useState(defaultCenter);
-  const [searchBox, setSearchBox] = useState<google.maps.places.SearchBox | null>(null);
-
-  // Load Google Maps
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: 'AIzaSyAQ3tRqgbbsKDSwC_oGNF6Ocsn01llBRuc',
-    libraries,
-  });
-
-  // New address form state
-  const [newAddress, setNewAddress] = useState({
-    houseNo: '',
-    street: '',
-    area: '',
-    city: '',
-    state: '',
-    pincode: '',
-    landmark: '',
-    label: 'Home',
-    isDefault: false,
-    latitude: defaultCenter.lat,
-    longitude: defaultCenter.lng,
-    recipientName: '',
-    recipientPhone: ''
-  });
+  
+  // Multiple delivery addresses
+  const [useSameAddress, setUseSameAddress] = useState(true);
+  const [oneTimeAddressId, setOneTimeAddressId] = useState<string>('');
+  const [subscriptionAddressId, setSubscriptionAddressId] = useState<string>('');
+  
+  // Delivery type and distance
+  const [deliveryType, setDeliveryType] = useState<'normal' | 'premium'>('normal');
+  const [deliveryDistance, setDeliveryDistance] = useState<number>(0);
 
   // Load user data
   useEffect(() => {
@@ -100,23 +66,10 @@ export default function CheckoutPage() {
     try {
       const userData = JSON.parse(userStr);
       setUser(userData);
-      setRecipientName(userData.name || '');
-      setRecipientPhone(userData.phone || '');
     } catch (error) {
       console.error('Error parsing user data:', error);
     }
   }, [router]);
-
-  // Auto-fill recipient details when form opens with "myself" selected
-  useEffect(() => {
-    if (showAddForm && orderFor === 'myself' && user && !editingAddressId) {
-      setNewAddress(prev => ({
-        ...prev,
-        recipientName: user.name || '',
-        recipientPhone: user.phone || ''
-      }));
-    }
-  }, [showAddForm, user, orderFor, editingAddressId]);
 
   // Load cart
   useEffect(() => {
@@ -168,6 +121,17 @@ export default function CheckoutPage() {
     loadAddresses();
   }, []);
 
+  // Check for addAddress query parameter
+  useEffect(() => {
+    if (searchParams) {
+      const addAddress = searchParams.get('addAddress');
+      if (addAddress === 'true') {
+        setShowAddForm(true);
+        setShowAllAddresses(true);
+      }
+    }
+  }, [searchParams]);
+
   const loadAddresses = () => {
     try {
       setLoading(true);
@@ -190,152 +154,8 @@ export default function CheckoutPage() {
     }
   };
 
-  // Reverse geocode
-  const reverseGeocode = async (lat: number, lng: number) => {
-    if (!window.google) return;
-
-    const geocoder = new google.maps.Geocoder();
-    
+  const handleSaveAddress = (addressData: any) => {
     try {
-      const result = await geocoder.geocode({
-        location: { lat, lng }
-      });
-
-      if (result.results[0]) {
-        const addressComponents = result.results[0].address_components;
-        
-        let houseNo = '';
-        let street = '';
-        let area = '';
-        let city = '';
-        let state = '';
-        let pincode = '';
-
-        addressComponents.forEach(component => {
-          const types = component.types;
-          
-          if (types.includes('street_number')) {
-            houseNo = component.long_name;
-          }
-          if (types.includes('route')) {
-            street = component.long_name;
-          }
-          if (types.includes('sublocality') || types.includes('sublocality_level_1')) {
-            area = component.long_name;
-          }
-          if (types.includes('locality')) {
-            city = component.long_name;
-          }
-          if (types.includes('administrative_area_level_1')) {
-            state = component.long_name;
-          }
-          if (types.includes('postal_code')) {
-            pincode = component.long_name;
-          }
-        });
-
-        setNewAddress(prev => ({
-          ...prev,
-          houseNo: houseNo || prev.houseNo,
-          street: street || prev.street,
-          area: area || prev.area,
-          city: city || prev.city,
-          state: state || prev.state,
-          pincode: pincode || prev.pincode,
-          latitude: lat,
-          longitude: lng
-        }));
-      }
-    } catch (error) {
-      console.error('Geocoding error:', error);
-    }
-  };
-
-  const onMapClick = async (e: google.maps.MapMouseEvent) => {
-    if (e.latLng) {
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      
-      setMarkerPosition({ lat, lng });
-      await reverseGeocode(lat, lng);
-    }
-  };
-
-  const onMarkerDragEnd = async (e: google.maps.MapMouseEvent) => {
-    if (e.latLng) {
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      
-      setMarkerPosition({ lat, lng });
-      await reverseGeocode(lat, lng);
-    }
-  };
-
-  const onSearchBoxLoad = (ref: google.maps.places.SearchBox) => {
-    setSearchBox(ref);
-  };
-
-  const onPlacesChanged = async () => {
-    if (searchBox) {
-      const places = searchBox.getPlaces();
-      if (places && places.length > 0) {
-        const place = places[0];
-        if (place.geometry && place.geometry.location) {
-          const lat = place.geometry.location.lat();
-          const lng = place.geometry.location.lng();
-          
-          setCenter({ lat, lng });
-          setMarkerPosition({ lat, lng });
-          await reverseGeocode(lat, lng);
-        }
-      }
-    }
-  };
-
-  const useCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          
-          setCenter({ lat, lng });
-          setMarkerPosition({ lat, lng });
-          await reverseGeocode(lat, lng);
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          alert('Unable to get your current location. Please select manually on the map.');
-        }
-      );
-    } else {
-      alert('Geolocation is not supported by your browser.');
-    }
-  };
-
-  const handleSaveAddress = () => {
-    try {
-      if (!newAddress.houseNo || !newAddress.street || !newAddress.area || 
-          !newAddress.city || !newAddress.state || !newAddress.pincode) {
-        alert('Please fill all required address fields');
-        return;
-      }
-
-      if (!/^\d{6}$/.test(newAddress.pincode)) {
-        alert('Pincode must be 6 digits');
-        return;
-      }
-
-      if (!newAddress.recipientName || !newAddress.recipientPhone) {
-        alert('Please enter recipient name and phone number');
-        return;
-      }
-
-      if (!/^\d{10}$/.test(newAddress.recipientPhone)) {
-        alert('Phone number must be 10 digits');
-        return;
-      }
-
       let updatedAddresses;
 
       if (editingAddressId) {
@@ -343,12 +163,12 @@ export default function CheckoutPage() {
         updatedAddresses = addresses.map((addr: Address) => {
           if (addr._id === editingAddressId) {
             return {
-              ...newAddress,
+              ...addressData,
               _id: editingAddressId
             };
           }
           // If new address is set as default, remove default from others
-          if (newAddress.isDefault) {
+          if (addressData.isDefault) {
             return { ...addr, isDefault: false };
           }
           return addr;
@@ -359,11 +179,11 @@ export default function CheckoutPage() {
       } else {
         // Create new address
         const newAddressWithId: Address = {
-          ...newAddress,
+          ...addressData,
           _id: `addr_${Date.now()}`
         };
         
-        if (addresses.length === 0 || newAddress.isDefault) {
+        if (addresses.length === 0 || addressData.isDefault) {
           newAddressWithId.isDefault = true;
           updatedAddresses = addresses.map((addr: Address) => ({ ...addr, isDefault: false }));
           updatedAddresses = [...updatedAddresses, newAddressWithId];
@@ -383,24 +203,6 @@ export default function CheckoutPage() {
       setEditingAddressId(null);
       setShowAllAddresses(false);
       
-      setNewAddress({
-        houseNo: '',
-        street: '',
-        area: '',
-        city: '',
-        state: '',
-        pincode: '',
-        landmark: '',
-        label: 'Home',
-        isDefault: false,
-        latitude: defaultCenter.lat,
-        longitude: defaultCenter.lng,
-        recipientName: '',
-        recipientPhone: ''
-      });
-      setMarkerPosition(defaultCenter);
-      setCenter(defaultCenter);
-      
       // Show success modal
       setShowSuccessModal(true);
       setTimeout(() => {
@@ -414,29 +216,8 @@ export default function CheckoutPage() {
 
   const handleEditAddress = (address: Address, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    setNewAddress({
-      houseNo: address.houseNo,
-      street: address.street,
-      area: address.area,
-      city: address.city,
-      state: address.state,
-      pincode: address.pincode,
-      landmark: address.landmark || '',
-      label: address.label || 'Home',
-      isDefault: address.isDefault,
-      latitude: address.latitude,
-      longitude: address.longitude,
-      recipientName: address.recipientName || '',
-      recipientPhone: address.recipientPhone || ''
-    });
-    
-    setCenter({ lat: address.latitude, lng: address.longitude });
-    setMarkerPosition({ lat: address.latitude, lng: address.longitude });
-    
     setEditingAddressId(address._id);
     setShowAddForm(true);
-    
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
@@ -446,6 +227,27 @@ export default function CheckoutPage() {
     e.stopPropagation();
     setAddressToDelete(addressId);
     setShowDeleteModal(true);
+  };
+
+  const handleSetDefaultAddress = (addressId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const updatedAddresses = addresses.map((addr: Address) => ({
+        ...addr,
+        isDefault: addr._id === addressId
+      }));
+      setAddresses(updatedAddresses);
+      localStorage.setItem('savedAddresses', JSON.stringify(updatedAddresses));
+      console.log('✅ Default address updated');
+      setSuccessMessage('Default address updated successfully!');
+      setShowSuccessModal(true);
+      setTimeout(() => {
+        setShowSuccessModal(false);
+      }, 2000);
+    } catch (error) {
+      console.error('❌ Error setting default address:', error);
+      alert('Failed to set default address');
+    }
   };
 
   const confirmDeleteAddress = () => {
@@ -531,23 +333,98 @@ export default function CheckoutPage() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!selectedAddressId) {
-      alert('Please select a delivery address');
-      return;
+    // Validation
+    if (useSameAddress) {
+      if (!selectedAddressId && !oneTimeAddressId) {
+        alert('Please select a delivery address');
+        return;
+      }
+    } else {
+      const hasOneTimeItems = cart.some((item: any) => item.type !== 'subscription');
+      const hasSubscriptionItems = cart.some((item: any) => item.type === 'subscription');
+      
+      if (hasOneTimeItems && !oneTimeAddressId) {
+        alert('Please select delivery address for one-time items');
+        return;
+      }
+      if (hasSubscriptionItems && !subscriptionAddressId) {
+        alert('Please select delivery address for subscription items');
+        return;
+      }
     }
 
     setPlacingOrder(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login to place order');
+        router.push('/auth?returnUrl=/food/checkout');
+        return;
+      }
+
+      // Separate one-time and subscription items
+      const oneTimeItems = cart.filter((item: any) => item.type !== 'subscription').map((item: any) => ({
+        productId: item.id || item.productId,
+        quantity: item.quantity
+      }));
       
+      const subscriptionItems = cart.filter((item: any) => item.type === 'subscription').map((item: any) => ({
+        productId: item.productId,
+        quantity: 1,
+        duration: item.duration,
+        startDate: item.startDate,
+        deliverySlot: item.deliverySlot,
+        skipDates: item.skipDates || [],
+        addons: item.addons || []
+      }));
+
+      // Get selected addresses
+      const oneTimeAddress = addresses.find(a => a._id === (useSameAddress ? (oneTimeAddressId || selectedAddressId) : oneTimeAddressId));
+      const subscriptionAddress = useSameAddress 
+        ? oneTimeAddress 
+        : addresses.find(a => a._id === subscriptionAddressId);
+
+      // Prepare order data
+      const orderData = {
+        oneTimeItems,
+        subscriptionItems,
+        oneTimeDeliveryAddress: oneTimeAddress,
+        subscriptionDeliveryAddress: subscriptionAddress,
+        useSameAddress,
+        deliveryType,
+        deliveryDistance,
+        deliverySlot: '10:00 AM - 12:00 PM', // Default slot
+        deliveryDate: new Date().toISOString(),
+        paymentMethod: paymentMethod === 'cod' ? 'cod' : 'online',
+        couponCode: appliedCoupon?.code || '',
+        specialInstructions: ''
+      };
+
+      const response = await fetch('http://localhost:5000/api/food/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to place order');
+      }
+
+      // Clear cart
       localStorage.removeItem('cart');
+      window.dispatchEvent(new Event('cartUpdated'));
       
-      alert('Order placed successfully!');
+      alert(`Order placed successfully! Order Number: ${data.data.orderNumber}`);
       router.push('/food/home');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error placing order:', error);
-      alert('Failed to place order. Please try again.');
+      alert(error.message || 'Failed to place order. Please try again.');
     } finally {
       setPlacingOrder(false);
     }
@@ -560,13 +437,7 @@ export default function CheckoutPage() {
     router.push('/food/home');
   };
 
-  if (loadError) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <p className="text-red-600">Error loading maps</p>
-    </div>;
-  }
-
-  if (loading || !isLoaded) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
@@ -580,7 +451,37 @@ export default function CheckoutPage() {
 
   const selectedAddress = addresses.find(addr => addr._id === selectedAddressId);
   const subtotal = calculateTotal();
-  const deliveryFee = 40;
+  
+  // Calculate delivery fees separately
+  const calculateDeliveryFees = () => {
+    const hasOneTimeItems = cart.some((item: any) => item.type !== 'subscription');
+    const hasSubscriptionItems = cart.some((item: any) => item.type === 'subscription');
+    
+    let oneTimeFee = 0;
+    let subscriptionFee = 0;
+    
+    if (hasOneTimeItems) {
+      if (deliveryType === 'normal') {
+        oneTimeFee = 0; // Free for normal delivery
+      } else if (deliveryType === 'premium') {
+        // Calculate based on distance
+        if (deliveryDistance <= 2) oneTimeFee = 20;
+        else if (deliveryDistance <= 4) oneTimeFee = 30;
+        else if (deliveryDistance <= 6) oneTimeFee = 40;
+        else if (deliveryDistance <= 8) oneTimeFee = 50;
+        else if (deliveryDistance <= 10) oneTimeFee = 60;
+        else oneTimeFee = 70;
+      }
+    }
+    
+    // Subscription delivery is always free
+    subscriptionFee = 0;
+    
+    return { oneTimeFee, subscriptionFee, total: oneTimeFee + subscriptionFee };
+  };
+  
+  const { oneTimeFee, subscriptionFee, total: deliveryFee } = calculateDeliveryFees();
+  
   const tax = Math.round(subtotal * 0.05);
   const couponDiscount = appliedCoupon 
     ? appliedCoupon.type === 'percentage' 
@@ -632,11 +533,120 @@ export default function CheckoutPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Side */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Delivery Options Section */}
+            {(cart.some((item: any) => item.type !== 'subscription') && cart.some((item: any) => item.type === 'subscription')) && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
+                <h2 className="text-base font-bold mb-4" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                  Delivery Options
+                </h2>
+                
+                {/* Use Same Address Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl mb-4" style={{ background: '#F9FAFB' }}>
+                  <div>
+                    <p className="text-sm font-semibold mb-1" style={{ color: '#0E1214' }}>
+                      Use same address for all items
+                    </p>
+                    <p className="text-xs" style={{ color: '#6B7280' }}>
+                      Both one-time and subscription items will be delivered to the same address
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setUseSameAddress(!useSameAddress);
+                      if (!useSameAddress) {
+                        // When toggling ON, sync both addresses with selected one
+                        if (selectedAddressId) {
+                          setOneTimeAddressId(selectedAddressId);
+                          setSubscriptionAddressId(selectedAddressId);
+                        }
+                      }
+                    }}
+                    className="relative w-14 h-7 rounded-full transition-all flex-shrink-0"
+                    style={{ background: useSameAddress ? '#E11D48' : '#D1D5DB' }}
+                  >
+                    <div
+                      className="absolute top-0.5 w-6 h-6 rounded-full transition-transform bg-white shadow-md"
+                      style={{ transform: useSameAddress ? 'translateX(32px)' : 'translateX(2px)' }}
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Delivery Type Selector - ONLY show if there are one-time items */}
+            {cart.some((item: any) => item.type !== 'subscription') && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
+                <p className="text-sm font-semibold mb-3" style={{ color: '#0E1214' }}>
+                  Delivery Speed
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setDeliveryType('normal')}
+                    className="p-4 rounded-xl border-2 text-left transition-all"
+                    style={{
+                      borderColor: deliveryType === 'normal' ? '#E11D48' : '#E5E7EB',
+                      background: deliveryType === 'normal' ? '#FEF2F2' : '#FFFFFF'
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Normal Delivery</span>
+                      <span className="text-xs font-bold px-2 py-1 rounded" 
+                        style={{ background: '#10B981', color: '#FFFFFF' }}>
+                        FREE
+                      </span>
+                    </div>
+                    <p className="text-xs" style={{ color: '#6B7280' }}>Within 1 hour</p>
+                  </button>
+
+                  <button
+                    onClick={() => setDeliveryType('premium')}
+                    className="p-4 rounded-xl border-2 text-left transition-all"
+                    style={{
+                      borderColor: deliveryType === 'premium' ? '#E11D48' : '#E5E7EB',
+                      background: deliveryType === 'premium' ? '#FEF2F2' : '#FFFFFF'
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Premium Delivery</span>
+                      <span className="text-xs font-bold px-2 py-1 rounded" 
+                        style={{ background: '#F59E0B', color: '#FFFFFF' }}>
+                        ₹20-70
+                      </span>
+                    </div>
+                    <p className="text-xs" style={{ color: '#6B7280' }}>Within 30 minutes</p>
+                  </button>
+                </div>
+
+                {/* Distance Input (Only show for premium) */}
+                {deliveryType === 'premium' && (
+                  <div className="mt-3 p-4 rounded-xl" style={{ background: '#FEF2F2' }}>
+                    <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214' }}>
+                      Delivery Distance (in km)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="0.1"
+                      value={deliveryDistance}
+                      onChange={(e) => setDeliveryDistance(parseFloat(e.target.value) || 0)}
+                      className="w-full px-4 py-2.5 rounded-lg border-2 text-sm font-semibold"
+                      style={{ borderColor: '#E11D48', color: '#0E1214' }}
+                      placeholder="Enter distance"
+                    />
+                    <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
+                      Fee: ₹{deliveryDistance <= 2 ? 20 : deliveryDistance <= 4 ? 30 : deliveryDistance <= 6 ? 40 : deliveryDistance <= 8 ? 50 : deliveryDistance <= 10 ? 60 : 70}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Delivery Address Section */}
             <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-base font-bold" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                  {showAddForm ? (editingAddressId ? 'Edit Address' : 'Add New Address') : 'Delivery Address'}
+                  {useSameAddress ? 'Delivery Address' : 'One-Time Items Address'}
                 </h2>
                 {showAddForm && (
                   <button
@@ -644,21 +654,6 @@ export default function CheckoutPage() {
                       setShowAddForm(false);
                       setEditingAddressId(null);
                       setShowAllAddresses(false);
-                      setNewAddress({
-                        houseNo: '',
-                        street: '',
-                        area: '',
-                        city: '',
-                        state: '',
-                        pincode: '',
-                        landmark: '',
-                        label: 'Home',
-                        isDefault: false,
-                        latitude: defaultCenter.lat,
-                        longitude: defaultCenter.lng,
-                        recipientName: '',
-                        recipientPhone: ''
-                      });
                     }}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg"
                     style={{ color: '#6B7280', background: '#F3F4F6' }}
@@ -730,13 +725,19 @@ export default function CheckoutPage() {
                     <div
                       key={address._id || `address-${index}`}
                       onClick={() => {
-                        setSelectedAddressId(address._id);
+                        if (useSameAddress) {
+                          setSelectedAddressId(address._id);
+                          setOneTimeAddressId(address._id);
+                          setSubscriptionAddressId(address._id);
+                        } else {
+                          setOneTimeAddressId(address._id);
+                        }
                         setShowAllAddresses(false);
                       }}
                       className="w-full p-5 rounded-xl border-2 transition-all text-left cursor-pointer"
                       style={{
-                        borderColor: selectedAddressId === address._id ? '#E11D48' : '#E5E7EB',
-                        background: selectedAddressId === address._id ? '#FEF2F2' : '#FFFFFF'
+                        borderColor: (useSameAddress ? selectedAddressId : oneTimeAddressId) === address._id ? '#E11D48' : '#E5E7EB',
+                        background: (useSameAddress ? selectedAddressId : oneTimeAddressId) === address._id ? '#FEF2F2' : '#FFFFFF'
                       }}
                     >
                       <div className="flex items-start gap-4">
@@ -744,11 +745,11 @@ export default function CheckoutPage() {
                           <div
                             className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
                             style={{
-                              borderColor: selectedAddressId === address._id ? '#E11D48' : '#D1D5DB',
-                              background: selectedAddressId === address._id ? '#E11D48' : 'transparent'
+                              borderColor: (useSameAddress ? selectedAddressId : oneTimeAddressId) === address._id ? '#E11D48' : '#D1D5DB',
+                              background: (useSameAddress ? selectedAddressId : oneTimeAddressId) === address._id ? '#E11D48' : 'transparent'
                             }}
                           >
-                            {selectedAddressId === address._id && (
+                            {(useSameAddress ? selectedAddressId : oneTimeAddressId) === address._id && (
                               <svg className="w-3 h-3" fill="none" stroke="#FFFFFF" strokeWidth="3" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
@@ -788,7 +789,7 @@ export default function CheckoutPage() {
                             </p>
                           )}
                         </div>
-                        {/* Edit and Delete Buttons */}
+                        {/* Edit, Set Default and Delete Buttons */}
                         <div className="flex flex-col gap-2">
                           <button
                             onClick={(e) => {
@@ -805,6 +806,29 @@ export default function CheckoutPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
+                          {!address.isDefault && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSetDefaultAddress(address._id, e);
+                              }}
+                              className="p-2 rounded-lg transition-all"
+                              style={{ background: '#F0FDF4', color: '#10B981' }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#DCFCE7';
+                                e.currentTarget.style.color = '#059669';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#F0FDF4';
+                                e.currentTarget.style.color = '#10B981';
+                              }}
+                              title="Set as Default"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -864,283 +888,100 @@ export default function CheckoutPage() {
 
               {/* Add Address Form */}
               {showAddForm && (
-                <div>
-                  {/* Order For Selection */}
-                  <div className="mb-5">
-                    <label className="block text-xs font-bold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                      Order For
-                    </label>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOrderFor('myself');
-                          setNewAddress({
-                            ...newAddress,
-                            recipientName: user?.name || '',
-                            recipientPhone: user?.phone || ''
-                          });
-                        }}
-                        className="flex-1 p-3 rounded-xl border-2 transition-all font-semibold text-sm"
-                        style={{
-                          borderColor: orderFor === 'myself' ? '#E11D48' : '#E5E7EB',
-                          background: orderFor === 'myself' ? '#FEF2F2' : '#FFFFFF',
-                          color: orderFor === 'myself' ? '#E11D48' : '#6B7280'
-                        }}
-                      >
-                        Myself
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOrderFor('someone');
-                          setNewAddress({
-                            ...newAddress,
-                            recipientName: '',
-                            recipientPhone: ''
-                          });
-                        }}
-                        className="flex-1 p-3 rounded-xl border-2 transition-all font-semibold text-sm"
-                        style={{
-                          borderColor: orderFor === 'someone' ? '#E11D48' : '#E5E7EB',
-                          background: orderFor === 'someone' ? '#FEF2F2' : '#FFFFFF',
-                          color: orderFor === 'someone' ? '#E11D48' : '#6B7280'
-                        }}
-                      >
-                        Someone Else
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Recipient Details */}
-                  <div className="mb-6 grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                        Recipient Name <span style={{ color: '#E11D48' }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Full Name"
-                        value={orderFor === 'myself' ? (user?.name || '') : newAddress.recipientName}
-                        onChange={(e) => setNewAddress({...newAddress, recipientName: e.target.value})}
-                        disabled={orderFor === 'myself'}
-                        className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                        style={{ borderColor: '#E5E7EB', background: orderFor === 'myself' ? '#F9FAFB' : '#FFFFFF' }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                        Phone Number <span style={{ color: '#E11D48' }}>*</span>
-                      </label>
-                      <input
-                        type="tel"
-                        placeholder="10-digit number"
-                        value={orderFor === 'myself' ? (user?.phone || '') : newAddress.recipientPhone}
-                        onChange={(e) => setNewAddress({...newAddress, recipientPhone: e.target.value.replace(/\D/g, '').slice(0, 10)})}
-                        disabled={orderFor === 'myself'}
-                        maxLength={10}
-                        className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                        style={{ borderColor: '#E5E7EB', background: orderFor === 'myself' ? '#F9FAFB' : '#FFFFFF' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Google Maps */}
-                  <div className="mb-5">
-                    <label className="block text-xs font-bold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                      Select Location
-                    </label>
-                    
-                    {/* @ts-ignore - Google Maps API types not fully compatible with React 19 */}
-                    <StandaloneSearchBox onLoad={onSearchBoxLoad} onPlacesChanged={onPlacesChanged}>
-                      <input
-                        type="text"
-                        placeholder="Search for a location..."
-                        className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600 mb-3"
-                        style={{ borderColor: '#E5E7EB' }}
-                      />
-                    </StandaloneSearchBox>
-
-                    <button
-                      type="button"
-                      onClick={useCurrentLocation}
-                      className="mb-3 px-3 py-2 rounded-lg font-semibold text-xs transition-all"
-                      style={{ background: '#FEF2F2', color: '#E11D48', border: '1px solid #FEE2E2' }}
-                    >
-                      Use Current Location
-                    </button>
-
-                    {/* @ts-ignore - Google Maps API types not fully compatible with React 19 */}
-                    <GoogleMap
-                      mapContainerStyle={mapContainerStyle}
-                      center={center}
-                      zoom={15}
-                      onClick={onMapClick}
-                      options={{
-                        zoomControl: true,
-                        streetViewControl: false,
-                        mapTypeControl: false,
-                        fullscreenControl: true,
-                      }}
-                    >
-                      {/* @ts-ignore - Google Maps API types not fully compatible with React 19 */}
-                      <Marker
-                        position={markerPosition}
-                        draggable={true}
-                        onDragEnd={onMarkerDragEnd}
-                      />
-                    </GoogleMap>
-                  </div>
-
-                  {/* Address Form Fields */}
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                          House/Flat No <span style={{ color: '#E11D48' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. A-101"
-                          value={newAddress.houseNo}
-                          onChange={(e) => setNewAddress({...newAddress, houseNo: e.target.value})}
-                          className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                          style={{ borderColor: '#E5E7EB' }}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                          Street <span style={{ color: '#E11D48' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Street name"
-                          value={newAddress.street}
-                          onChange={(e) => setNewAddress({...newAddress, street: e.target.value})}
-                          className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                          style={{ borderColor: '#E5E7EB' }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                        Area/Locality <span style={{ color: '#E11D48' }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Area/Locality"
-                        value={newAddress.area}
-                        onChange={(e) => setNewAddress({...newAddress, area: e.target.value})}
-                        className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                        style={{ borderColor: '#E5E7EB' }}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                          City <span style={{ color: '#E11D48' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="City"
-                          value={newAddress.city}
-                          onChange={(e) => setNewAddress({...newAddress, city: e.target.value})}
-                          className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                          style={{ borderColor: '#E5E7EB' }}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                          State <span style={{ color: '#E11D48' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="State"
-                          value={newAddress.state}
-                          onChange={(e) => setNewAddress({...newAddress, state: e.target.value})}
-                          className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                          style={{ borderColor: '#E5E7EB' }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                          Pincode <span style={{ color: '#E11D48' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="6-digit pincode"
-                          value={newAddress.pincode}
-                          onChange={(e) => setNewAddress({...newAddress, pincode: e.target.value})}
-                          className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                          style={{ borderColor: '#E5E7EB' }}
-                          maxLength={6}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                          Landmark (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Nearby landmark"
-                          value={newAddress.landmark}
-                          onChange={(e) => setNewAddress({...newAddress, landmark: e.target.value})}
-                          className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-600"
-                          style={{ borderColor: '#E5E7EB' }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold mb-3" style={{ color: '#374151' }}>
-                        Save as
-                      </label>
-                      <div className="flex gap-3">
-                        {['Home', 'Work', 'Other'].map(label => (
-                          <label key={label} className="flex items-center cursor-pointer">
-                            <input
-                              type="radio"
-                              name="label"
-                              value={label}
-                              checked={newAddress.label === label}
-                              onChange={(e) => setNewAddress({...newAddress, label: e.target.value})}
-                              className="mr-2"
-                              style={{ accentColor: '#E11D48' }}
-                            />
-                            <span className="text-sm font-medium" style={{ color: '#374151' }}>{label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 pt-3">
-                      <button
-                        onClick={() => {
-                          setShowAddForm(false);
-                          setShowAllAddresses(false);
-                        }}
-                        className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all"
-                        style={{ background: '#F3F4F6', color: '#6B7280' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveAddress}
-                        className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all"
-                        style={{ background: '#E11D48', color: '#FFFFFF', fontFamily: 'Poppins, sans-serif' }}
-                      >
-                        {editingAddressId ? 'Update Address' : 'Save Address'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <AddressForm
+                  initialAddress={editingAddressId ? addresses.find(addr => addr._id === editingAddressId) : undefined}
+                  user={user}
+                  showOrderFor={true}
+                  onSave={handleSaveAddress}
+                  onCancel={() => {
+                    setShowAddForm(false);
+                    setEditingAddressId(null);
+                    setShowAllAddresses(false);
+                  }}
+                />
               )}
             </div>
+
+            {/* Subscription Items Address Section (Only when useSameAddress is false AND there are subscription items) */}
+            {!useSameAddress && cart.some((item: any) => item.type === 'subscription') && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
+                <h2 className="text-base font-bold mb-4" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                  Subscription Items Address
+                </h2>
+                
+                {addresses.length > 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold mb-3" style={{ color: '#6B7280' }}>
+                      Select delivery address for subscription items
+                    </p>
+                    {addresses.map((address, index) => (
+                      <div
+                        key={address._id || `sub-address-${index}`}
+                        onClick={() => setSubscriptionAddressId(address._id)}
+                        className="w-full p-5 rounded-xl border-2 transition-all text-left cursor-pointer"
+                        style={{
+                          borderColor: subscriptionAddressId === address._id ? '#E11D48' : '#E5E7EB',
+                          background: subscriptionAddressId === address._id ? '#FEF2F2' : '#FFFFFF'
+                        }}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="flex-shrink-0 mt-1">
+                            <div
+                              className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                              style={{
+                                borderColor: subscriptionAddressId === address._id ? '#E11D48' : '#D1D5DB',
+                                background: subscriptionAddressId === address._id ? '#E11D48' : 'transparent'
+                              }}
+                            >
+                              {subscriptionAddressId === address._id && (
+                                <svg className="w-3 h-3" fill="none" stroke="#FFFFFF" strokeWidth="3" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs font-bold px-2 py-1 rounded" 
+                                style={{ background: '#E11D48', color: '#FFFFFF' }}>
+                                {address.label || 'Address'}
+                              </span>
+                              {subscriptionAddressId === address._id && (
+                                <span className="text-xs font-semibold px-2 py-1 rounded" 
+                                  style={{ background: '#10B981', color: '#FFFFFF' }}>
+                                  FREE Delivery
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm font-bold mb-1" style={{ color: '#0E1214' }}>
+                              {address.houseNo}, {address.street}
+                            </p>
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              {address.area}, {address.city}, {address.state} - {address.pincode}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-xs mb-3" style={{ color: '#6B7280' }}>
+                      No saved addresses
+                    </p>
+                    <button
+                      onClick={() => setShowAddForm(true)}
+                      className="px-6 py-2.5 rounded-xl font-semibold text-sm transition-all"
+                      style={{ background: '#E11D48', color: '#FFFFFF', fontFamily: 'Poppins, sans-serif' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#BE123C'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#E11D48'}
+                    >
+                      Add Address
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Payment Method */}
             {selectedAddress && (
@@ -1322,10 +1163,26 @@ export default function CheckoutPage() {
                   <span style={{ color: '#6B7280' }}>Subtotal</span>
                   <span className="font-semibold" style={{ color: '#0E1214' }}>₹{subtotal}</span>
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: '#6B7280' }}>Delivery Fee</span>
-                  <span className="font-semibold" style={{ color: '#0E1214' }}>₹{deliveryFee}</span>
-                </div>
+                
+                {/* Delivery Fees - Separate for One-time and Subscription */}
+                {cart.some((item: any) => item.type !== 'subscription') && (
+                  <div className="flex justify-between text-xs">
+                    <span style={{ color: '#6B7280' }}>
+                      One-Time Delivery ({deliveryType === 'premium' ? `Premium • ${deliveryDistance}km` : 'Normal'})
+                    </span>
+                    <span className="font-semibold" style={{ color: oneTimeFee === 0 ? '#10B981' : '#0E1214' }}>
+                      {oneTimeFee === 0 ? 'FREE' : `₹${oneTimeFee}`}
+                    </span>
+                  </div>
+                )}
+                
+                {cart.some((item: any) => item.type === 'subscription') && (
+                  <div className="flex justify-between text-xs">
+                    <span style={{ color: '#6B7280' }}>Subscription Delivery</span>
+                    <span className="font-semibold" style={{ color: '#10B981' }}>FREE</span>
+                  </div>
+                )}
+                
                 <div className="flex justify-between text-xs">
                   <span style={{ color: '#6B7280' }}>Tax (5%)</span>
                   <span className="font-semibold" style={{ color: '#0E1214' }}>₹{tax}</span>

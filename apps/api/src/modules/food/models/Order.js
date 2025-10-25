@@ -99,6 +99,16 @@ const OrderSchema = new Schema(
       min: 0,
       default: 0,
     },
+    oneTimeDeliveryFee: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    subscriptionDeliveryFee: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     discount: {
       type: Number,
       min: 0,
@@ -111,7 +121,29 @@ const OrderSchema = new Schema(
     },
     deliveryAddress: {
       type: DeliveryAddressSchema,
-      required: true,
+      required: false,
+    },
+    oneTimeDeliveryAddress: {
+      type: DeliveryAddressSchema,
+      required: false,
+    },
+    subscriptionDeliveryAddress: {
+      type: DeliveryAddressSchema,
+      required: false,
+    },
+    useSameAddress: {
+      type: Boolean,
+      default: true,
+    },
+    deliveryType: {
+      type: String,
+      enum: ['normal', 'premium'],
+      default: 'normal',
+    },
+    deliveryDistance: {
+      type: Number,
+      min: 0,
+      default: 0,
     },
     deliverySlot: {
       type: String,
@@ -183,8 +215,11 @@ OrderSchema.index({ paymentStatus: 1, createdAt: -1 }); // Payment tracking
 OrderSchema.index({ paymentMethod: 1, paymentStatus: 1 }); // Payment method analysis
 
 // Delivery tracking
-OrderSchema.index({ 'deliveryAddress.pincode': 1, deliveryDate: 1 }); // Area-based delivery
+OrderSchema.index({ 'deliveryAddress.pincode': 1, deliveryDate: 1 }); // Area-based delivery (legacy)
+OrderSchema.index({ 'oneTimeDeliveryAddress.pincode': 1, deliveryDate: 1 }); // One-time delivery area
+OrderSchema.index({ 'subscriptionDeliveryAddress.pincode': 1, deliveryDate: 1 }); // Subscription delivery area
 OrderSchema.index({ deliveryDate: 1, deliverySlot: 1 }); // Delivery scheduling
+OrderSchema.index({ deliveryType: 1, status: 1 }); // Delivery type analysis
 
 // Analytics and reporting
 OrderSchema.index({ createdAt: 1, status: 1 }); // Time-series status analysis

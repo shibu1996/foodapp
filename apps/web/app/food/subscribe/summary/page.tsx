@@ -99,8 +99,8 @@ export default function SummaryPage() {
           basePrice: subscriptionData.basePrice
         });
         
-        // Update context with loaded data
-        updateState({
+        // Prepare updated state
+        const updatedState = {
           productId: subscriptionData.productId,
           productName: subscriptionData.productName || subscriptionData.name,
           productImage: subscriptionData.productImage || subscriptionData.image,
@@ -115,12 +115,28 @@ export default function SummaryPage() {
           addonPrice: subscriptionData.addonPrice || 0,
           basePrice: subscriptionData.basePrice,
           couponCode: subscriptionData.couponCode || '',
-        });
+        };
+        
+        // Update context with loaded data
+        updateState(updatedState);
+        
+        // ALSO save to subscriptionState in localStorage to prevent it from being overwritten with empty state
+        const currentState = localStorage.getItem('subscriptionState');
+        if (currentState) {
+          try {
+            const parsedCurrentState = JSON.parse(currentState);
+            const mergedState = { ...parsedCurrentState, ...updatedState };
+            localStorage.setItem('subscriptionState', JSON.stringify(mergedState));
+            console.log('💾 Updated subscriptionState in localStorage with edit data');
+          } catch (e) {
+            console.error('Error updating subscriptionState:', e);
+          }
+        }
         
         setIsEditMode(true);
         console.log('✅ Edit data loaded successfully');
         
-        // Clear the flag from localStorage
+        // Clear the edit flag from localStorage
         localStorage.removeItem('editingSubscription');
         
         // Use setTimeout to ensure state updates have processed
@@ -240,21 +256,82 @@ export default function SummaryPage() {
     }
   };
 
-  const handleCheckout = () => {
-    setCheckingOut(true);
-    
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-    
-    if (!token || !user) {
-      console.log('🔒 User not logged in, redirecting to auth page');
-      // Redirect to auth page with return URL to delivery address
-      router.push('/auth?returnUrl=/food/checkout');
-    } else {
-      console.log('✅ User logged in, navigating to delivery address');
-      // User is logged in, go to delivery address selection
-      router.push('/food/checkout');
+  const handleCheckout = async () => {
+    try {
+      setCheckingOut(true);
+      
+      console.log('💳 Checkout clicked - First adding subscription to cart');
+      
+      // First, add subscription to cart
+      const subscriptionItem = {
+        _id: `sub_${Date.now()}`,
+        type: 'subscription',
+        productId: state.productId,
+        productName: state.productName,
+        productImage: state.productImage,
+        productDescription: state.productDescription,
+        basePrice: state.basePrice,
+        duration: state.duration,
+        startDate: state.startDate,
+        endDate: state.endDate,
+        deliverySlot: state.deliverySlot,
+        skipDates: state.skipDates || [],
+        skipEnabled: state.skipEnabled || false,
+        addons: state.addons || [],
+        addonPrice: state.addonPrice || 0,
+        couponCode: state.couponCode || '',
+        discount: state.discount || 0,
+        totalAmount: finalTotal,
+        price: finalTotal
+      };
+      
+      // Get existing cart
+      const savedCart = localStorage.getItem('cart');
+      let cart = savedCart ? JSON.parse(savedCart) : [];
+      
+      // Check if this product already exists in cart (for edit mode)
+      const existingIndex = cart.findIndex((item: any) => 
+        item.type === 'subscription' && item.productId === state.productId
+      );
+      
+      if (existingIndex !== -1) {
+        // Update existing subscription
+        cart[existingIndex] = subscriptionItem;
+        console.log('📝 Updated existing subscription in cart');
+      } else {
+        // Add new subscription
+        cart.push(subscriptionItem);
+        console.log('➕ Added new subscription to cart');
+      }
+      
+      // Save cart
+      localStorage.setItem('cart', JSON.stringify(cart));
+      
+      // Dispatch cartUpdated event
+      window.dispatchEvent(new Event('cartUpdated'));
+      
+      console.log('✅ Subscription added to cart, now navigating to checkout');
+      
+      // Clear subscription state after adding to cart
+      resetState();
+      
+      // Check if user is logged in
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+      
+      if (!token || !user) {
+        console.log('🔒 User not logged in, redirecting to auth page');
+        // Redirect to auth page with return URL to checkout
+        router.push('/auth?returnUrl=/food/checkout');
+      } else {
+        console.log('✅ User logged in, navigating to checkout');
+        // User is logged in, go to checkout
+        router.push('/food/checkout');
+      }
+    } catch (error) {
+      console.error('❌ Error during checkout:', error);
+      alert('Failed to proceed to checkout. Please try again.');
+      setCheckingOut(false);
     }
   };
 
@@ -308,6 +385,13 @@ export default function SummaryPage() {
       duration: state.duration
     });
     
+    // FIRST: Check if editingSubscription exists in localStorage - if yes, don't redirect at all
+    const editingData = localStorage.getItem('editingSubscription');
+    if (editingData) {
+      console.log('⏳ Edit data found in localStorage, skipping redirect check...');
+      return; // Don't redirect, data will be loaded shortly
+    }
+    
     // If essential data is missing, redirect to home page
     // BUT: Don't redirect if we're currently loading edit data
     if (!state.productName || !state.basePrice) {
@@ -315,13 +399,6 @@ export default function SummaryPage() {
       if (isLoadingEditData) {
         console.log('⏳ Waiting for edit data to load... (isLoadingEditData=true)');
         return; // Don't redirect yet, data is being loaded
-      }
-      
-      // Also check if editingSubscription exists in localStorage (as a backup)
-      const editingData = localStorage.getItem('editingSubscription');
-      if (editingData) {
-        console.log('⏳ Edit data found in localStorage, waiting to load...');
-        return; // Don't redirect, data will be loaded shortly
       }
       
       console.warn('⚠️ Missing product data! Redirecting to home page...');

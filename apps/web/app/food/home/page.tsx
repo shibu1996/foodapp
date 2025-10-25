@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient, User } from '@restaurant-app/api-client';
 import { ProfileDropdown } from './components/ProfileDropdown';
 import { LocationSelector } from './components/LocationSelector';
-import { LocationModal } from './components/LocationModal';
+import { LocationModal } from '../../components/LocationModal';
 import { SearchBar } from './components/SearchBar';
 import { HeroCarousel } from './components/HeroCarousel';
 import { QuickActions } from './components/QuickActions';
@@ -26,12 +26,169 @@ export default function HomePage() {
   const [cart, setCart] = useState<any[]>([]);
   const [currentLocation, setCurrentLocation] = useState('Sector 18, Noida');
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showCartModal, setShowCartModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [cartLoaded, setCartLoaded] = useState(false); // Track if cart is loaded from localStorage
   
   // New state for API data
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+
+  // Calculate distance between two coordinates (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in km
+  };
+
+  // Find nearest saved address based on current coordinates
+  const findNearestAddress = (currentLat: number, currentLng: number) => {
+    try {
+      const savedAddresses = localStorage.getItem('savedAddresses');
+      if (!savedAddresses) return null;
+
+      const addresses = JSON.parse(savedAddresses);
+      if (!Array.isArray(addresses) || addresses.length === 0) return null;
+
+      // Check if there's a default address
+      const defaultAddress = addresses.find((addr: any) => addr.isDefault);
+      if (defaultAddress) {
+        console.log('🏠 Using default address:', defaultAddress);
+        return defaultAddress;
+      }
+
+      // Find nearest address
+      let nearest = null;
+      let minDistance = Infinity;
+
+      addresses.forEach((addr: any) => {
+        if (addr.latitude && addr.longitude) {
+          const distance = calculateDistance(currentLat, currentLng, addr.latitude, addr.longitude);
+          console.log(`📏 Distance to ${addr.label || 'Address'}: ${distance.toFixed(2)} km`);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearest = addr;
+          }
+        }
+      });
+
+      // Only use nearby address if within 10km
+      if (nearest && minDistance < 10) {
+        console.log(`✅ Found nearest address (${minDistance.toFixed(2)} km):`, nearest);
+        return nearest;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ Error finding nearest address:', error);
+      return null;
+    }
+  };
+
+  // Get current location using browser Geolocation API
+  const getCurrentLocation = async () => {
+    if ('geolocation' in navigator) {
+      console.log('🔄 Requesting location permission...');
+      try {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            console.log('📍 Got Coordinates:', latitude, longitude);
+            
+            // Check if user has saved addresses nearby
+            const nearestAddress = findNearestAddress(latitude, longitude);
+            
+            if (nearestAddress) {
+              // Use nearest saved address
+              const locationStr = `${nearestAddress.area}, ${nearestAddress.city}`;
+              console.log('🎯 Using nearest saved address:', locationStr);
+              setCurrentLocation(locationStr);
+              localStorage.setItem('currentLocation', locationStr);
+            } else {
+              // No saved address nearby, do reverse geocoding
+              try {
+                const response = await fetch(
+                  `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=AIzaSyAQ3tRqgbbsKDSwC_oGNF6Ocsn01llBRuc`
+                );
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                  console.log('🗺️ Full Geocode Response:', JSON.stringify(data.results[0], null, 2));
+                  const addressComponents = data.results[0].address_components;
+                  let area = '';
+                  let city = '';
+                  
+                  // Priority order for area extraction
+                  const areaPriority = [
+                    'sublocality_level_2',
+                    'sublocality_level_1', 
+                    'sublocality',
+                    'neighborhood',
+                    'administrative_area_level_2'
+                  ];
+                  
+                  // Extract city
+                  for (const component of addressComponents) {
+                    if (component.types.includes('locality')) {
+                      city = component.long_name;
+                      break;
+                    }
+                  }
+                  
+                  // Extract area with priority
+                  for (const priority of areaPriority) {
+                    for (const component of addressComponents) {
+                      if (component.types.includes(priority)) {
+                        area = component.long_name;
+                        console.log(`✅ Found area using: ${priority} = ${area}`);
+                        break;
+                      }
+                    }
+                    if (area) break;
+                  }
+                  
+                  const locationStr = area && city ? `${area}, ${city}` : (city || area || data.results[0].formatted_address);
+                  console.log('✅ Final Location:', locationStr);
+                  setCurrentLocation(locationStr);
+                  localStorage.setItem('currentLocation', locationStr);
+                } else {
+                  console.error('❌ No results from geocoding');
+                }
+              } catch (error) {
+                console.error('❌ Error reverse geocoding:', error);
+              }
+            }
+          },
+          (error) => {
+            console.error('❌ Location error:', error.message);
+            if (error.code === 1) {
+              console.log('User denied location permission');
+            } else if (error.code === 2) {
+              console.log('Location unavailable');
+            } else if (error.code === 3) {
+              console.log('Location timeout');
+            }
+          },
+          { 
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+          }
+        );
+      } catch (error) {
+        console.error('❌ Geolocation error:', error);
+      }
+    } else {
+      console.log('❌ Geolocation not supported by browser');
+    }
+  };
 
   useEffect(() => {
     // Check if user is logged in (from localStorage)
@@ -53,6 +210,9 @@ export default function HomePage() {
     const savedLocation = localStorage.getItem('currentLocation');
     if (savedLocation) {
       setCurrentLocation(savedLocation);
+    } else {
+      // Try to get current location using browser geolocation API
+      getCurrentLocation();
     }
 
     // Load cart from localStorage
@@ -336,7 +496,7 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               {/* Cart Button */}
               <button 
-                onClick={() => router.push('/food/cart')}
+                onClick={() => setShowCartModal(true)}
                 className="relative p-2.5 rounded-lg transition-all border"
                 style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
                 onMouseEnter={(e) => {
@@ -361,22 +521,162 @@ export default function HomePage() {
               </button>
 
               {/* Notification Bell */}
-              <button className="relative p-2.5 rounded-lg transition-all border"
-                style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#E11D48';
-                  e.currentTarget.style.backgroundColor = '#FEF2F2';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#E5E7EB';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#E11D48' }}></span>
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2.5 rounded-lg transition-all border"
+                  style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#E11D48';
+                    e.currentTarget.style.backgroundColor = '#FEF2F2';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#E5E7EB';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#E11D48' }}></span>
+                </button>
+
+                {/* Notifications Dropdown */}
+                {showNotifications && (
+                  <>
+                    {/* Backdrop to close dropdown */}
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowNotifications(false)}
+                    />
+                    
+                    {/* Dropdown */}
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden"
+                      style={{ borderColor: '#E5E7EB', fontFamily: 'Poppins, sans-serif' }}>
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' }}>
+                        <h3 className="text-sm font-bold" style={{ color: '#0E1214' }}>
+                          Notifications
+                        </h3>
+                        <button 
+                          className="text-xs font-medium transition-all"
+                          style={{ color: '#E11D48' }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#BE123C'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#E11D48'}
+                        >
+                          Clear All
+                        </button>
+                      </div>
+
+                      {/* Notifications List */}
+                      <div className="overflow-y-auto" style={{ maxHeight: '380px' }}>
+                        {/* Order Delivered */}
+                        <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#DCFCE7' }}>
+                              <span className="text-base" style={{ color: '#16A34A' }}>✓</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                                Order Delivered Successfully
+                              </p>
+                              <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                                Your order has been delivered. Enjoy!
+                              </p>
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>2h ago</p>
+                            </div>
+                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: '#E11D48' }}></div>
+                          </div>
+                        </div>
+
+                        {/* Special Offer */}
+                        <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF2F2' }}>
+                              <span className="text-base" style={{ color: '#E11D48' }}>%</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                                30% OFF on Next Order
+                              </p>
+                              <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                                Use code SAVE30. Valid till tonight!
+                              </p>
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>5h ago</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Subscription Reminder */}
+                        <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF3C7' }}>
+                              <span className="text-base" style={{ color: '#F59E0B' }}>🔔</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                                Subscription Renewal in 2 Days
+                              </p>
+                              <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                                Dal Makhani subscription renews soon
+                              </p>
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>1d ago</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* New Item Added */}
+                        <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#E0E7FF' }}>
+                              <span className="text-base" style={{ color: '#6366F1' }}>🍽️</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                                New Items on Menu
+                              </p>
+                              <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                                Check out healthy salad collection
+                              </p>
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>2d ago</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Success */}
+                        <div className="px-4 py-3 hover:bg-gray-50 transition-all cursor-pointer">
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#DCFCE7' }}>
+                              <span className="text-base" style={{ color: '#16A34A' }}>₹</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                                Payment of ₹850 Successful
+                              </p>
+                              <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                                Amount debited from your account
+                              </p>
+                              <p className="text-xs" style={{ color: '#9CA3AF' }}>3d ago</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer */}
+                      <div className="px-4 py-2.5 border-t text-center" style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' }}>
+                        <button 
+                          className="text-xs font-semibold transition-all"
+                          style={{ color: '#E11D48' }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#BE123C'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#E11D48'}
+                        >
+                          View All Notifications
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* Profile */}
               {user && user.name ? (
@@ -596,33 +896,24 @@ export default function HomePage() {
       </main>
 
       {/* Floating Cart Component */}
-      <FloatingCart />
+      <FloatingCart 
+        externalShowModal={showCartModal}
+        onModalClose={() => setShowCartModal(false)}
+        onFloatingButtonClick={() => setShowCartModal(true)}
+      />
 
       {/* Location Modal */}
       <LocationModal
         isOpen={showLocationModal}
         onClose={() => setShowLocationModal(false)}
         currentLocation={currentLocation}
-        onLocationSelect={(location) => setCurrentLocation(location)}
+        onSelectLocation={(address) => {
+          const locationStr = `${address.area}, ${address.city}`;
+          setCurrentLocation(locationStr);
+          localStorage.setItem('currentLocation', locationStr);
+        }}
       />
 
-      {/* Add animation styles */}
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}</style>
     </div>
   );
 }

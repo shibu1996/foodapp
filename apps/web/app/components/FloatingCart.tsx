@@ -4,10 +4,44 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getFoodImage } from '../food/home/utils/images';
 
-export function FloatingCart() {
+interface FloatingCartProps {
+  externalShowModal?: boolean;
+  onModalClose?: () => void;
+  onFloatingButtonClick?: () => void;
+}
+
+export function FloatingCart({ externalShowModal, onModalClose, onFloatingButtonClick }: FloatingCartProps = {}) {
   const router = useRouter();
   const [cart, setCart] = useState<any[]>([]);
-  const [showCartModal, setShowCartModal] = useState(false);
+  const [internalShowModal, setInternalShowModal] = useState(false);
+  
+  // Determine if using external control
+  const isExternalControl = externalShowModal !== undefined && onModalClose !== undefined;
+  
+  // Use external control if provided, otherwise use internal state
+  const showCartModal = isExternalControl ? externalShowModal : internalShowModal;
+  
+  // Handle modal state changes
+  const setShowCartModal = (value: boolean) => {
+    if (isExternalControl) {
+      // External control - can't open from here, only close
+      if (!value) {
+        onModalClose();
+      }
+    } else {
+      // Internal control - full control
+      setInternalShowModal(value);
+    }
+  };
+  
+  // Handle floating button click
+  const handleFloatingButtonClick = () => {
+    if (onFloatingButtonClick) {
+      onFloatingButtonClick();
+    } else {
+      setInternalShowModal(true);
+    }
+  };
 
   // Monitor cart state changes
   useEffect(() => {
@@ -159,7 +193,7 @@ export function FloatingCart() {
       {/* Floating Cart Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <button
-          onClick={() => setShowCartModal(true)}
+          onClick={handleFloatingButtonClick}
           className="text-white px-5 py-3 rounded-lg transition-all duration-300 flex items-center gap-2.5 relative"
           style={{ 
             backgroundColor: '#E11D48',

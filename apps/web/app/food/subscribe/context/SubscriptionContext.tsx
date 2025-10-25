@@ -112,6 +112,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   // Save to localStorage on state change (only after mounted)
   useEffect(() => {
     if (mounted) {
+      // Don't save if we're in the middle of loading edit data
+      const editingData = localStorage.getItem('editingSubscription');
+      if (editingData) {
+        console.log('⏸️ Skipping localStorage save - edit data is being loaded');
+        return;
+      }
+      
       console.log('💾 Saving to localStorage:', {
         productId: state.productId,
         productName: state.productName,

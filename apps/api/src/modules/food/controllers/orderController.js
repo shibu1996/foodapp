@@ -1,13 +1,20 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import { calculateOneTimeDeliveryFee, calculateSubscriptionDeliveryFee } from '../../../shared/utils/distanceCalculator.js';
 
 // Place new order (User)
 export const placeOrder = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
-      items,
-      deliveryAddress,
+      oneTimeItems = [],
+      subscriptionItems = [],
+      deliveryAddress, // Legacy support
+      oneTimeDeliveryAddress,
+      subscriptionDeliveryAddress,
+      useSameAddress = true,
+      deliveryType = 'normal', // 'normal' or 'premium'
+      deliveryDistance = 0,
       deliverySlot,
       deliveryDate,
       paymentMethod,
@@ -16,18 +23,42 @@ export const placeOrder = async (req, res) => {
     } = req.body;
 
     // Validate items
-    if (!items || items.length === 0) {
+    const allItems = [...oneTimeItems, ...subscriptionItems];
+    if (allItems.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Order must have at least one item',
       });
     }
 
-    // Calculate order totals
-    let subtotal = 0;
-    const orderItems = [];
+    // Validate addresses
+    if (useSameAddress) {
+      if (!deliveryAddress && !oneTimeDeliveryAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'Delivery address is required',
+        });
+      }
+    } else {
+      if (oneTimeItems.length > 0 && !oneTimeDeliveryAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'One-time delivery address is required',
+        });
+      }
+      if (subscriptionItems.length > 0 && !subscriptionDeliveryAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'Subscription delivery address is required',
+        });
+      }
+    }
 
-    for (const item of items) {
+    // Process one-time items
+    let oneTimeSubtotal = 0;
+    const processedOneTimeItems = [];
+    
+    for (const item of oneTimeItems) {
       const product = await Product.findById(item.productId);
       
       if (!product) {
@@ -45,22 +76,65 @@ export const placeOrder = async (req, res) => {
       }
 
       const itemTotal = product.price * item.quantity;
-      subtotal += itemTotal;
+      oneTimeSubtotal += itemTotal;
 
-      orderItems.push({
+      processedOneTimeItems.push({
         productId: product._id,
         productName: product.name,
         price: product.price,
         quantity: item.quantity,
         total: itemTotal,
+        isSubscription: false,
       });
     }
+
+    // Process subscription items
+    let subscriptionSubtotal = 0;
+    const processedSubscriptionItems = [];
+    
+    for (const item of subscriptionItems) {
+      const product = await Product.findById(item.productId);
+      
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          error: `Product not found: ${item.productId}`,
+        });
+      }
+
+      if (!product.isActive) {
+        return res.status(400).json({
+          success: false,
+          error: `Product is not available: ${product.name}`,
+        });
+      }
+
+      // Use subscription price if available
+      const price = product.subscriptionPrice || product.price;
+      const itemTotal = price * (item.quantity || 1);
+      subscriptionSubtotal += itemTotal;
+
+      processedSubscriptionItems.push({
+        productId: product._id,
+        productName: product.name,
+        price: price,
+        quantity: item.quantity || 1,
+        total: itemTotal,
+        isSubscription: true,
+      });
+    }
+
+    // Combine all items
+    const orderItems = [...processedOneTimeItems, ...processedSubscriptionItems];
+    const subtotal = oneTimeSubtotal + subscriptionSubtotal;
 
     // Calculate tax (5% GST)
     const tax = Math.round(subtotal * 0.05);
 
-    // Calculate delivery fee (free above 200)
-    const deliveryFee = subtotal >= 200 ? 0 : 30;
+    // Calculate delivery fees
+    const oneTimeDeliveryFee = calculateOneTimeDeliveryFee(deliveryType, deliveryDistance);
+    const subscriptionDeliveryFee = calculateSubscriptionDeliveryFee(); // Always 0
+    const deliveryFee = oneTimeDeliveryFee + subscriptionDeliveryFee;
 
     // Apply discount if coupon provided
     let discount = 0;
@@ -75,6 +149,10 @@ export const placeOrder = async (req, res) => {
 
     const totalAmount = subtotal + tax + deliveryFee - discount;
 
+    // Prepare delivery addresses
+    const finalOneTimeAddress = useSameAddress ? (oneTimeDeliveryAddress || deliveryAddress) : oneTimeDeliveryAddress;
+    const finalSubscriptionAddress = useSameAddress ? (oneTimeDeliveryAddress || deliveryAddress) : subscriptionDeliveryAddress;
+
     // Create order
     const order = await Order.create({
       userId,
@@ -82,9 +160,16 @@ export const placeOrder = async (req, res) => {
       subtotal,
       tax,
       deliveryFee,
+      oneTimeDeliveryFee,
+      subscriptionDeliveryFee,
       discount,
       totalAmount,
-      deliveryAddress,
+      deliveryAddress: useSameAddress ? (oneTimeDeliveryAddress || deliveryAddress) : null, // Legacy
+      oneTimeDeliveryAddress: finalOneTimeAddress,
+      subscriptionDeliveryAddress: finalSubscriptionAddress,
+      useSameAddress,
+      deliveryType,
+      deliveryDistance,
       deliverySlot,
       deliveryDate,
       paymentMethod,

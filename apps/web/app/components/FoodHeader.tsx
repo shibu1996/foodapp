@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ProfileDropdown } from '../food/home/components/ProfileDropdown';
 
 interface FoodHeaderProps {
   user?: any;
@@ -12,6 +14,7 @@ interface FoodHeaderProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   onLocationClick?: () => void;
+  onCartClick?: () => void;
   onLogout?: () => void;
   centerTitle?: string;
 }
@@ -26,10 +29,12 @@ export function FoodHeader({
   searchQuery = '',
   onSearchChange,
   onLocationClick,
+  onCartClick,
   onLogout,
   centerTitle
 }: FoodHeaderProps) {
   const router = useRouter();
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const handleLogout = () => {
     if (onLogout) {
@@ -121,7 +126,13 @@ export function FoodHeader({
             {/* Cart Button */}
             {showCart && (
               <button 
-                onClick={() => router.push('/food/cart')}
+                onClick={() => {
+                  if (onCartClick) {
+                    onCartClick();
+                  } else {
+                    router.push('/food/cart');
+                  }
+                }}
                 className="relative p-2.5 rounded-lg transition-all border"
                 style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
                 onMouseEnter={(e) => {
@@ -147,64 +158,136 @@ export function FoodHeader({
             )}
 
             {/* Notification Bell */}
-            <button className="relative p-2.5 rounded-lg transition-all border"
-              style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#E11D48';
-                e.currentTarget.style.backgroundColor = '#FEF2F2';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = '#E5E7EB';
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#E11D48' }}></span>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2.5 rounded-lg transition-all border"
+                style={{ borderColor: '#E5E7EB', color: '#0E1214' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#E11D48';
+                  e.currentTarget.style.backgroundColor = '#FEF2F2';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#E5E7EB';
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#E11D48' }}></span>
+              </button>
+
+              {/* Notifications Dropdown */}
+              {showNotifications && (
+                <>
+                  {/* Backdrop to close dropdown */}
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowNotifications(false)}
+                  />
+                  
+                  {/* Dropdown */}
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden"
+                    style={{ borderColor: '#E5E7EB', fontFamily: 'Poppins, sans-serif' }}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' }}>
+                      <h3 className="text-sm font-bold" style={{ color: '#0E1214' }}>
+                        Notifications
+                      </h3>
+                      <button 
+                        className="text-xs font-medium transition-all"
+                        style={{ color: '#E11D48' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#BE123C'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#E11D48'}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+
+                    {/* Notifications List */}
+                    <div className="overflow-y-auto" style={{ maxHeight: '380px' }}>
+                      {/* Order Delivered */}
+                      <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#DCFCE7' }}>
+                            <span className="text-base" style={{ color: '#16A34A' }}>✓</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                              Order Delivered Successfully
+                            </p>
+                            <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                              Your order has been delivered. Enjoy!
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>2h ago</p>
+                          </div>
+                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: '#E11D48' }}></div>
+                        </div>
+                      </div>
+
+                      {/* Special Offer */}
+                      <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF2F2' }}>
+                            <span className="text-base" style={{ color: '#E11D48' }}>%</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                              30% OFF on Next Order
+                            </p>
+                            <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                              Use code SAVE30. Valid till tonight!
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>5h ago</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Subscription Reminder */}
+                      <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF3C7' }}>
+                            <span className="text-base" style={{ color: '#F59E0B' }}>🔔</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                              Subscription Renewal in 2 Days
+                            </p>
+                            <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                              Dal Makhani subscription renews soon
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>1d ago</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* New Item Added */}
+                      <div className="px-4 py-3 border-b hover:bg-gray-50 transition-all cursor-pointer" style={{ borderColor: '#F3F4F6' }}>
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#E0E7FF' }}>
+                            <span className="text-base" style={{ color: '#6366F1' }}>🍽️</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: '#0E1214' }}>
+                              New Items on Menu
+                            </p>
+                            <p className="text-xs leading-tight mb-1" style={{ color: '#6B7280' }}>
+                              Check out healthy salad collection
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>2d ago</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Profile */}
             {user && user.name ? (
-              <div className="relative group">
-                <button className="flex items-center gap-2 p-2 rounded-lg transition-all border"
-                  style={{ borderColor: '#E5E7EB' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#E11D48';
-                    e.currentTarget.style.backgroundColor = '#FEF2F2';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#E5E7EB';
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center" 
-                    style={{ background: 'linear-gradient(135deg, #E11D48 0%, #BE123C 100%)' }}>
-                    <span className="text-white text-xs font-bold">
-                      {user.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <span className="text-sm font-semibold hidden md:block" style={{ color: '#0E1214' }}>
-                    {user.name.split(' ')[0]}
-                  </span>
-                </button>
-                
-                {/* Dropdown */}
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
-                  style={{ borderColor: '#E5E7EB' }}>
-                  <div className="p-3 border-b" style={{ borderColor: '#E5E7EB' }}>
-                    <p className="text-sm font-bold" style={{ color: '#0E1214' }}>{user.name}</p>
-                    <p className="text-xs" style={{ color: '#6B7280' }}>{user.email}</p>
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-gray-50 transition-all"
-                    style={{ color: '#E11D48' }}
-                  >
-                    🚪 Logout
-                  </button>
-                </div>
-              </div>
+              <ProfileDropdown userName={user.name} onLogout={handleLogout} />
             ) : (
               <button 
                 onClick={() => router.push('/auth')}
