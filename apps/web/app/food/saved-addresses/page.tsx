@@ -37,6 +37,20 @@ export default function SavedAddressesPage() {
   const [addressToDelete, setAddressToDelete] = useState<Address | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [outletLocation, setOutletLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Calculate distance using Haversine formula
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Radius of Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in km
+  };
 
   // Load user and cart
   useEffect(() => {
@@ -52,7 +66,27 @@ export default function SavedAddressesPage() {
     }
 
     loadAddresses();
+    loadOutletLocation();
   }, []);
+
+  const loadOutletLocation = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/food/outlets/active');
+      const data = await response.json();
+      
+      if (data.success && data.data && data.data.length > 0) {
+        const outlet = data.data[0]; // Get first active outlet
+        if (outlet.location && outlet.location.coordinates) {
+          setOutletLocation({
+            lng: outlet.location.coordinates[0],
+            lat: outlet.location.coordinates[1]
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading outlet:', error);
+    }
+  };
 
   const loadAddresses = () => {
     try {
@@ -332,18 +366,48 @@ export default function SavedAddressesPage() {
                 {addresses.length} {addresses.length === 1 ? 'address' : 'addresses'} saved
               </p>
             </div>
-            <button
-              onClick={handleAddAddress}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all"
-              style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}
-              onMouseEnter={(e: any) => e.currentTarget.style.backgroundColor = '#BE123C'}
-              onMouseLeave={(e: any) => e.currentTarget.style.backgroundColor = '#E11D48'}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add New Address
-            </button>
+            <div className="flex items-center gap-3">
+              {addresses.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm('⚠️ Delete ALL addresses? This cannot be undone!')) {
+                      localStorage.removeItem('savedAddresses');
+                      setAddresses([]);
+                      setSuccessMessage('All addresses deleted!');
+                      setShowSuccessModal(true);
+                      setTimeout(() => setShowSuccessModal(false), 2000);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all border"
+                  style={{ backgroundColor: '#FFFFFF', color: '#DC2626', borderColor: '#DC2626' }}
+                  onMouseEnter={(e: any) => {
+                    e.currentTarget.style.backgroundColor = '#DC2626';
+                    e.currentTarget.style.color = '#FFFFFF';
+                  }}
+                  onMouseLeave={(e: any) => {
+                    e.currentTarget.style.backgroundColor = '#FFFFFF';
+                    e.currentTarget.style.color = '#DC2626';
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Clear All
+                </button>
+              )}
+              <button
+                onClick={handleAddAddress}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}
+                onMouseEnter={(e: any) => e.currentTarget.style.backgroundColor = '#BE123C'}
+                onMouseLeave={(e: any) => e.currentTarget.style.backgroundColor = '#E11D48'}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add New Address
+              </button>
+            </div>
           </div>
 
           {/* Addresses Grid */}
@@ -464,6 +528,24 @@ export default function SavedAddressesPage() {
                       <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
                         Landmark: {address.landmark}
                       </p>
+                    )}
+                    
+                    {/* Distance from Outlet */}
+                    {outletLocation && address.latitude && address.longitude && (
+                      <div className="mt-3 flex items-center gap-2 p-2 rounded-lg" style={{ backgroundColor: address.isDefault ? '#FFFFFF' : '#E0F2FE' }}>
+                        <svg className="w-4 h-4" style={{ color: '#0284C7' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-xs font-bold" style={{ color: '#0284C7' }}>
+                          {calculateDistance(
+                            outletLocation.lat,
+                            outletLocation.lng,
+                            address.latitude,
+                            address.longitude
+                          ).toFixed(2)} km from outlet
+                        </span>
+                      </div>
                     )}
                   </div>
 

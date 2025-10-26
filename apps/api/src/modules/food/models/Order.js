@@ -144,8 +144,8 @@ const OrderSchema = new Schema(
     },
     deliveryType: {
       type: String,
-      enum: ['normal', 'premium'],
-      default: 'normal',
+      enum: ['express', 'scheduled', 'standard'],
+      default: 'standard',
     },
     deliveryDistance: {
       type: Number,

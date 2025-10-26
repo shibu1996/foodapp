@@ -174,6 +174,26 @@ export function FloatingCart({ externalShowModal, onModalClose, onFloatingButton
     window.dispatchEvent(new Event('cartUpdated'));
   };
 
+  const duplicateSubscription = (item: any) => {
+    console.log('📋 Duplicating subscription:', item.productName || item.name);
+    
+    // Create a duplicate with new ID
+    const duplicateItem = {
+      ...item,
+      _id: `duplicate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `duplicate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    
+    const newCart = [...cart, duplicateItem];
+    setCart(newCart);
+    localStorage.setItem('cart', JSON.stringify(newCart));
+    
+    // Dispatch custom event for same-tab sync
+    window.dispatchEvent(new Event('cartUpdated'));
+    
+    console.log('✅ Subscription duplicated successfully');
+  };
+
   const calculateTotal = () => {
     return cart.reduce((sum, item) => {
       if (item.type === 'subscription') {
@@ -324,74 +344,101 @@ export function FloatingCart({ externalShowModal, onModalClose, onFloatingButton
                         )}
                       </div>
                       
-                      {/* Edit Button (only for subscription items) */}
+                      {/* Edit & Duplicate Buttons (only for subscription items) */}
                       {item.type === 'subscription' && (
-                        <button
-                          onClick={() => {
-                            console.log('🔘 Edit button clicked!');
-                            console.log('📦 Full item data:', item);
-                            console.log('📦 Item keys:', Object.keys(item));
-                            
-                            // Ensure all required fields are present
-                            const editData = {
-                              ...item,
-                              // Ensure these fields exist with fallbacks
-                              productName: item.productName || item.name,
-                              name: item.name || item.productName,
-                              productId: item.productId || item.id || item._id,
-                              basePrice: item.basePrice || item.price || 0,
-                              productImage: item.productImage || item.image,
-                              image: item.image || item.productImage,
-                              productDescription: item.productDescription || item.description,
-                            };
-                            
-                            console.log('📝 Prepared edit data:', {
-                              productName: editData.productName,
-                              productId: editData.productId,
-                              basePrice: editData.basePrice,
-                              duration: editData.duration
-                            });
-                            
-                            // Store subscription data in localStorage for editing
-                            localStorage.setItem('editingSubscription', JSON.stringify(editData));
-                            
-                            // Verify it was saved
-                            const saved = localStorage.getItem('editingSubscription');
-                            const parsed = saved ? JSON.parse(saved) : null;
-                            console.log('✅ Verification - Saved data:', {
-                              exists: !!saved,
-                              productName: parsed?.productName,
-                              basePrice: parsed?.basePrice
-                            });
-                            
-                            // Close modal first
-                            setShowCartModal(false);
-                            
-                            // Navigate to summary page with a small delay to ensure localStorage is set
-                            // Add timestamp to force reload even if already on summary page
-                            setTimeout(() => {
-                              console.log('🚀 Navigating to summary page...');
-                              router.push(`/food/subscribe/summary?edit=${Date.now()}`);
-                            }, 50);
-                          }}
-                          className="px-3 py-1.5 rounded-lg font-semibold text-xs transition-all flex items-center gap-1"
-                          style={{ 
-                            backgroundColor: '#FEF2F2',
-                            color: '#E11D48',
-                            border: '1px solid #FEE2E2'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#FEE2E2';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = '#FEF2F2';
-                          }}
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Edit
-                        </button>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => {
+                              console.log('🔘 Edit button clicked!');
+                              console.log('📦 Full item data:', item);
+                              console.log('📦 Item keys:', Object.keys(item));
+                              
+                              // Ensure all required fields are present
+                              const editData = {
+                                ...item,
+                                // Ensure these fields exist with fallbacks
+                                productName: item.productName || item.name,
+                                name: item.name || item.productName,
+                                productId: item.productId || item.id || item._id,
+                                basePrice: item.basePrice || item.price || 0,
+                                productImage: item.productImage || item.image,
+                                image: item.image || item.productImage,
+                                productDescription: item.productDescription || item.description,
+                              };
+                              
+                              console.log('📝 Prepared edit data:', {
+                                productName: editData.productName,
+                                productId: editData.productId,
+                                basePrice: editData.basePrice,
+                                duration: editData.duration
+                              });
+                              
+                              // Store subscription data in localStorage for editing
+                              localStorage.setItem('editingSubscription', JSON.stringify(editData));
+                              
+                              // Verify it was saved
+                              const saved = localStorage.getItem('editingSubscription');
+                              const parsed = saved ? JSON.parse(saved) : null;
+                              console.log('✅ Verification - Saved data:', {
+                                exists: !!saved,
+                                productName: parsed?.productName,
+                                basePrice: parsed?.basePrice
+                              });
+                              
+                              // Close modal first
+                              setShowCartModal(false);
+                              
+                              // Navigate to summary page with a small delay to ensure localStorage is set
+                              // Add timestamp to force reload even if already on summary page
+                              setTimeout(() => {
+                                console.log('🚀 Navigating to summary page...');
+                                router.push(`/food/subscribe/summary?edit=${Date.now()}`);
+                              }, 50);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg font-semibold text-xs transition-all flex items-center gap-1"
+                            style={{ 
+                              backgroundColor: '#DBEAFE',
+                              color: '#1E40AF',
+                              border: '1px solid #BFDBFE'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#BFDBFE';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#DBEAFE';
+                            }}
+                            title="Edit subscription"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              console.log('📋 Duplicate button clicked!');
+                              duplicateSubscription(item);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg font-semibold text-xs transition-all flex items-center gap-1"
+                            style={{ 
+                              backgroundColor: '#D1FAE5',
+                              color: '#047857',
+                              border: '1px solid #A7F3D0'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#A7F3D0';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#D1FAE5';
+                            }}
+                            title="Duplicate subscription"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            Duplicate
+                          </button>
+                        </div>
                       )}
                       
                       {/* Quantity Selector (only for one-time items) */}

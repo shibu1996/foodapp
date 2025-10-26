@@ -43,6 +43,8 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [couponError, setCouponError] = useState('');
   const [showAllAddresses, setShowAllAddresses] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [itemToRemove, setItemToRemove] = useState<number | null>(null);
   
   // Multiple delivery addresses
   const [useSameAddress, setUseSameAddress] = useState(true);
@@ -50,8 +52,20 @@ export default function CheckoutPage() {
   const [subscriptionAddressId, setSubscriptionAddressId] = useState<string>('');
   
   // Delivery type and distance
-  const [deliveryType, setDeliveryType] = useState<'normal' | 'premium'>('normal');
+  const [deliveryType, setDeliveryType] = useState<'express' | 'scheduled' | 'standard'>('standard');
   const [deliveryDistance, setDeliveryDistance] = useState<number>(0);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
+  
+  // Bill breakdown accordion
+  const [showBillBreakdown, setShowBillBreakdown] = useState(false);
+  
+  // Charges from API
+  const [charges, setCharges] = useState<any>({
+    delivery: [],
+    platform: [],
+    tax: [],
+    packaging: []
+  });
 
   // Load user data
   useEffect(() => {
@@ -120,6 +134,40 @@ export default function CheckoutPage() {
   useEffect(() => {
     loadAddresses();
   }, []);
+  
+  // Load charges from API (reload when cart changes)
+  useEffect(() => {
+    if (cart.length > 0) {
+      loadCharges();
+    }
+  }, [cart]);
+  
+  const loadCharges = async () => {
+    try {
+      // Determine order type based on cart items
+      const hasOneTimeItems = cart.some((item: any) => item.type !== 'subscription');
+      const hasSubscriptionItems = cart.some((item: any) => item.type === 'subscription');
+      
+      let orderType = 'both';
+      if (hasOneTimeItems && !hasSubscriptionItems) {
+        orderType = 'onetime';
+      } else if (hasSubscriptionItems && !hasOneTimeItems) {
+        orderType = 'subscription';
+      }
+      
+      const response = await fetch(`http://localhost:5000/api/food/charges/active?orderType=${orderType}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setCharges(data.data);
+          console.log('✅ Charges loaded from API:', data.data);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading charges:', error);
+      // If API fails, charges will remain empty (all FREE)
+    }
+  };
 
   // Check for addAddress query parameter
   useEffect(() => {
@@ -332,6 +380,41 @@ export default function CheckoutPage() {
     setCouponError('');
   };
 
+  // Handle quantity change for one-time items
+  const handleQuantityChange = (index: number, newQuantity: number) => {
+    if (newQuantity < 1) return; // Don't allow 0 quantity
+    
+    const updatedCart = [...cart];
+    updatedCart[index].quantity = newQuantity;
+    setCart(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
+  };
+  
+  // Handle item removal
+  const handleRemoveItem = (index: number) => {
+    setItemToRemove(index);
+    setShowRemoveModal(true);
+  };
+  
+  const confirmRemoveItem = () => {
+    if (itemToRemove !== null) {
+      const updatedCart = cart.filter((_, i) => i !== itemToRemove);
+      setCart(updatedCart);
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+      
+      setShowRemoveModal(false);
+      setItemToRemove(null);
+      
+      // If cart becomes empty, redirect to home
+      if (updatedCart.length === 0) {
+        setTimeout(() => {
+          alert('Your cart is empty!');
+          router.push('/food/home');
+        }, 300);
+      }
+    }
+  };
+
   const handlePlaceOrder = async () => {
     // Validation
     if (useSameAddress) {
@@ -517,7 +600,7 @@ export default function CheckoutPage() {
   const selectedAddress = addresses.find(addr => addr._id === selectedAddressId);
   const subtotal = calculateTotal();
   
-  // Calculate delivery fees separately
+  // Calculate delivery fees based on admin charges from API
   const calculateDeliveryFees = () => {
     const hasOneTimeItems = cart.some((item: any) => item.type !== 'subscription');
     const hasSubscriptionItems = cart.some((item: any) => item.type === 'subscription');
@@ -525,35 +608,124 @@ export default function CheckoutPage() {
     let oneTimeFee = 0;
     let subscriptionFee = 0;
     
+    // If no delivery charges configured in admin, delivery is FREE
+    if (!charges.delivery || charges.delivery.length === 0) {
+      return { oneTimeFee: 0, subscriptionFee: 0, total: 0 };
+    }
+    
     if (hasOneTimeItems) {
-      if (deliveryType === 'normal') {
-        oneTimeFee = 0; // Free for normal delivery
-      } else if (deliveryType === 'premium') {
-        // Calculate based on distance
-        if (deliveryDistance <= 2) oneTimeFee = 20;
-        else if (deliveryDistance <= 4) oneTimeFee = 30;
-        else if (deliveryDistance <= 6) oneTimeFee = 40;
-        else if (deliveryDistance <= 8) oneTimeFee = 50;
-        else if (deliveryDistance <= 10) oneTimeFee = 60;
-        else oneTimeFee = 70;
+      // Find the applicable delivery charge based on delivery type
+      let applicableCharge = null;
+      
+      if (deliveryType === 'express') {
+        // Find distance-based charge
+        applicableCharge = charges.delivery.find((c: any) => 
+          c.name.toLowerCase().includes('express') && 
+          c.maxDistance && 
+          deliveryDistance <= c.maxDistance
+        );
+      } else if (deliveryType === 'scheduled') {
+        // Find scheduled/free charge
+        applicableCharge = charges.delivery.find((c: any) => 
+          c.name.toLowerCase().includes('scheduled') || 
+          c.name.toLowerCase().includes('shared') ||
+          c.amount === 0
+        );
+      } else {
+        // Standard delivery - fixed price
+        applicableCharge = charges.delivery.find((c: any) => 
+          c.name.toLowerCase().includes('standard')
+        );
+      }
+      
+      if (applicableCharge) {
+        oneTimeFee = applicableCharge.type === 'percentage' 
+          ? Math.round(calculateTotal() * applicableCharge.amount / 100)
+          : applicableCharge.amount;
       }
     }
     
-    // Subscription delivery is always free
-    subscriptionFee = 0;
+    // Subscription delivery is typically FREE, but check if there's a specific charge
+    if (hasSubscriptionItems) {
+      const subscriptionDeliveryCharge = charges.delivery.find((c: any) => 
+        c.applicableFor === 'subscription' || c.applicableFor === 'both'
+      );
+      
+      if (subscriptionDeliveryCharge) {
+        subscriptionFee = subscriptionDeliveryCharge.type === 'percentage'
+          ? Math.round(calculateTotal() * subscriptionDeliveryCharge.amount / 100)
+          : subscriptionDeliveryCharge.amount;
+      }
+    }
     
     return { oneTimeFee, subscriptionFee, total: oneTimeFee + subscriptionFee };
   };
+
+  // Calculate platform fee from API charges
+  const calculatePlatformFee = () => {
+    // If no platform fees configured in admin, platform fee is FREE (0)
+    if (!charges.platform || charges.platform.length === 0) {
+      return 0;
+    }
+    
+    // Use the first active platform fee (typically there's only one)
+    const platformCharge = charges.platform[0];
+    
+    if (platformCharge.type === 'percentage') {
+      return Math.round(subtotal * platformCharge.amount / 100);
+    } else {
+      return platformCharge.amount;
+    }
+  };
+
+  // Calculate packaging charge from API charges
+  const calculatePackagingCharge = () => {
+    // If no packaging charges configured in admin, packaging is FREE (0)
+    if (!charges.packaging || charges.packaging.length === 0) {
+      return 0;
+    }
+    
+    const oneTimeItems = cart.filter((item: any) => item.type !== 'subscription');
+    const itemCount = oneTimeItems.reduce((total, item) => total + (item.quantity || 1), 0);
+    
+    // Use the first active packaging charge
+    const packagingCharge = charges.packaging[0];
+    
+    if (packagingCharge.type === 'percentage') {
+      return Math.round(subtotal * packagingCharge.amount / 100);
+    } else {
+      // Fixed charge per item
+      return packagingCharge.amount * itemCount;
+    }
+  };
+  
+  // Calculate tax from API charges
+  const calculateTax = () => {
+    // If no tax configured in admin, tax is FREE (0)
+    if (!charges.tax || charges.tax.length === 0) {
+      return 0;
+    }
+    
+    // Use the first active tax (typically there's only one)
+    const taxCharge = charges.tax[0];
+    
+    if (taxCharge.type === 'percentage') {
+      return Math.round(subtotal * taxCharge.amount / 100);
+    } else {
+      return taxCharge.amount;
+    }
+  };
   
   const { oneTimeFee, subscriptionFee, total: deliveryFee } = calculateDeliveryFees();
-  
-  const tax = Math.round(subtotal * 0.05);
+  const platformFee = calculatePlatformFee();
+  const packagingCharge = calculatePackagingCharge();
+  const tax = calculateTax();
   const couponDiscount = appliedCoupon 
     ? appliedCoupon.type === 'percentage' 
       ? Math.round((subtotal * appliedCoupon.discount) / 100)
       : appliedCoupon.discount
     : 0;
-  const total = subtotal + deliveryFee + tax - couponDiscount;
+  const total = subtotal + deliveryFee + platformFee + packagingCharge + tax - couponDiscount;
 
   return (
     <div className="min-h-screen" style={{ background: '#F9FAFB' }}>
@@ -641,69 +813,170 @@ export default function CheckoutPage() {
             {/* Delivery Type Selector - ONLY show if there are one-time items */}
             {cart.some((item: any) => item.type !== 'subscription') && (
               <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
-                <p className="text-sm font-semibold mb-3" style={{ color: '#0E1214' }}>
-                  Delivery Speed
-                </p>
-                <div className="grid grid-cols-2 gap-3">
+                <h3 className="text-lg font-bold mb-4" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                  <i className="fa fa-truck mr-2" style={{ color: '#E11D48' }}></i>
+                  Delivery Options
+                </h3>
+                
+                <div className="space-y-3">
+                  {/* Express Delivery */}
                   <button
-                    onClick={() => setDeliveryType('normal')}
-                    className="p-4 rounded-xl border-2 text-left transition-all"
+                    onClick={() => setDeliveryType('express')}
+                    className="w-full p-4 rounded-xl border-2 text-left transition-all"
                     style={{
-                      borderColor: deliveryType === 'normal' ? '#E11D48' : '#E5E7EB',
-                      background: deliveryType === 'normal' ? '#FEF2F2' : '#FFFFFF'
+                      borderColor: deliveryType === 'express' ? '#E11D48' : '#E5E7EB',
+                      background: deliveryType === 'express' ? '#FEF2F2' : '#FFFFFF'
                     }}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Normal Delivery</span>
-                      <span className="text-xs font-bold px-2 py-1 rounded" 
-                        style={{ background: '#10B981', color: '#FFFFFF' }}>
-                        FREE
-                      </span>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <i className="fa fa-bolt" style={{ color: '#F59E0B', fontSize: '14px' }}></i>
+                          <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Express Delivery</span>
+                          {deliveryType === 'express' && deliveryDistance <= 3 && (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded" 
+                              style={{ background: '#10B981', color: '#FFFFFF' }}>
+                              FREE
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
+                          Instant delivery • 30-40 mins
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 text-xs">
+                          <span className="px-2 py-1 rounded" style={{ background: '#D1FAE5', color: '#059669' }}>
+                            0-3km: FREE
+                          </span>
+                          <span className="px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                            3-5km: ₹20
+                          </span>
+                          <span className="px-2 py-1 rounded" style={{ background: '#FED7AA', color: '#C2410C' }}>
+                            5-10km: ₹30
+                          </span>
+                          <span className="px-2 py-1 rounded" style={{ background: '#FECACA', color: '#991B1B' }}>
+                            10+km: ₹50
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs" style={{ color: '#6B7280' }}>Within 1 hour</p>
                   </button>
 
+                  {/* Distance Input for Express */}
+                  {deliveryType === 'express' && (
+                    <div className="p-4 rounded-xl" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2' }}>
+                      <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                        <i className="fa fa-map-marker-alt mr-1.5" style={{ color: '#E11D48' }}></i>
+                        Enter Delivery Distance (km)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        step="0.5"
+                        value={deliveryDistance}
+                        onChange={(e) => setDeliveryDistance(parseFloat(e.target.value) || 0)}
+                        className="w-full px-4 py-2.5 rounded-lg border-2 text-sm font-semibold focus:outline-none"
+                        style={{ borderColor: '#E11D48', color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}
+                        placeholder="e.g., 2.5"
+                      />
+                      <div className="flex items-center justify-between mt-3">
+                        <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                          Delivery Charge:
+                        </p>
+                        <p className="text-sm font-bold" style={{ color: '#E11D48' }}>
+                          {deliveryDistance <= 3 ? 'FREE' : deliveryDistance <= 5 ? '₹20' : deliveryDistance <= 10 ? '₹30' : '₹50'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Scheduled Delivery */}
                   <button
-                    onClick={() => setDeliveryType('premium')}
-                    className="p-4 rounded-xl border-2 text-left transition-all"
+                    onClick={() => setDeliveryType('scheduled')}
+                    className="w-full p-4 rounded-xl border-2 text-left transition-all"
                     style={{
-                      borderColor: deliveryType === 'premium' ? '#E11D48' : '#E5E7EB',
-                      background: deliveryType === 'premium' ? '#FEF2F2' : '#FFFFFF'
+                      borderColor: deliveryType === 'scheduled' ? '#E11D48' : '#E5E7EB',
+                      background: deliveryType === 'scheduled' ? '#FEF2F2' : '#FFFFFF'
                     }}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Premium Delivery</span>
-                      <span className="text-xs font-bold px-2 py-1 rounded" 
-                        style={{ background: '#F59E0B', color: '#FFFFFF' }}>
-                        ₹20-70
-                      </span>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <i className="fa fa-clock" style={{ color: '#10B981', fontSize: '14px' }}></i>
+                          <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Scheduled Delivery</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded" 
+                            style={{ background: '#10B981', color: '#FFFFFF' }}>
+                            FREE
+                          </span>
+                        </div>
+                        <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
+                          Choose a time slot • Batched delivery
+                        </p>
+                        <p className="text-xs" style={{ color: '#F59E0B' }}>
+                          <i className="fa fa-info-circle mr-1"></i>
+                          Wait time: 2-3 orders batched together
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs" style={{ color: '#6B7280' }}>Within 30 minutes</p>
+                  </button>
+
+                  {/* Time Slots for Scheduled Delivery */}
+                  {deliveryType === 'scheduled' && (
+                    <div className="p-4 rounded-xl" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                      <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                        <i className="fa fa-calendar-alt mr-1.5" style={{ color: '#10B981' }}></i>
+                        Select Time Slot
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: 'slot1', time: '12:00-2:00 PM' },
+                          { id: 'slot2', time: '2:00-4:00 PM' },
+                          { id: 'slot3', time: '4:00-6:00 PM' },
+                          { id: 'slot4', time: '6:00-8:00 PM' },
+                        ].map((slot) => (
+                          <button
+                            key={slot.id}
+                            onClick={() => setSelectedTimeSlot(slot.id)}
+                            className="px-3 py-2 rounded-lg font-semibold text-xs transition-all"
+                            style={{
+                              background: selectedTimeSlot === slot.id ? '#10B981' : '#FFFFFF',
+                              color: selectedTimeSlot === slot.id ? '#FFFFFF' : '#6B7280',
+                              border: `1.5px solid ${selectedTimeSlot === slot.id ? '#10B981' : '#D1D5DB'}`
+                            }}
+                          >
+                            {slot.time}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Standard Delivery */}
+                  <button
+                    onClick={() => setDeliveryType('standard')}
+                    className="w-full p-4 rounded-xl border-2 text-left transition-all"
+                    style={{
+                      borderColor: deliveryType === 'standard' ? '#E11D48' : '#E5E7EB',
+                      background: deliveryType === 'standard' ? '#FEF2F2' : '#FFFFFF'
+                    }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <i className="fa fa-shipping-fast" style={{ color: '#6366F1', fontSize: '14px' }}></i>
+                          <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Standard Delivery</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded" 
+                            style={{ background: '#6366F1', color: '#FFFFFF' }}>
+                            ₹30
+                          </span>
+                        </div>
+                        <p className="text-xs" style={{ color: '#6B7280' }}>
+                          Normal delivery • Within 1-2 hours
+                        </p>
+                      </div>
+                    </div>
                   </button>
                 </div>
-
-                {/* Distance Input (Only show for premium) */}
-                {deliveryType === 'premium' && (
-                  <div className="mt-3 p-4 rounded-xl" style={{ background: '#FEF2F2' }}>
-                    <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214' }}>
-                      Delivery Distance (in km)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      step="0.1"
-                      value={deliveryDistance}
-                      onChange={(e) => setDeliveryDistance(parseFloat(e.target.value) || 0)}
-                      className="w-full px-4 py-2.5 rounded-lg border-2 text-sm font-semibold"
-                      style={{ borderColor: '#E11D48', color: '#0E1214' }}
-                      placeholder="Enter distance"
-                    />
-                    <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                      Fee: ₹{deliveryDistance <= 2 ? 20 : deliveryDistance <= 4 ? 30 : deliveryDistance <= 6 ? 40 : deliveryDistance <= 8 ? 50 : deliveryDistance <= 10 ? 60 : 70}
-                    </p>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1048,245 +1321,436 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Payment Method */}
-            {selectedAddress && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
-                <h2 className="text-base font-bold mb-5" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                  Payment Method
-                </h2>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { id: 'upi', label: 'UPI' },
-                    { id: 'card', label: 'Card' },
-                    { id: 'cod', label: 'Cash on Delivery' },
-                    { id: 'wallet', label: 'Wallet' }
-                  ].map((method) => (
-                    <button
-                      key={method.id}
-                      onClick={() => setPaymentMethod(method.id as any)}
-                      className="p-3 rounded-xl border-2 transition-all font-semibold text-sm"
-                      style={{
-                        borderColor: paymentMethod === method.id ? '#E11D48' : '#E5E7EB',
-                        background: paymentMethod === method.id ? '#FEF2F2' : '#FFFFFF',
-                        color: paymentMethod === method.id ? '#E11D48' : '#6B7280'
+            {/* Coupon Section - Moved from Right Side */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
+              <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                <i className="fa fa-tags" style={{ color: '#E11D48' }}></i>
+                Apply Coupon
+              </h3>
+              {!appliedCoupon ? (
+                <div>
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      value={couponCode}
+                      onChange={(e) => {
+                        setCouponCode(e.target.value.toUpperCase());
+                        setCouponError('');
                       }}
+                      placeholder="ENTER CODE"
+                      className="flex-1 px-3 py-2 border-2 rounded-lg text-xs font-semibold focus:outline-none uppercase"
+                      style={{ 
+                        borderColor: couponError ? '#DC2626' : '#E11D48', 
+                        color: '#0E1214',
+                        fontFamily: 'Poppins, sans-serif'
+                      }}
+                    />
+                    <button
+                      onClick={handleApplyCoupon}
+                      className="px-4 py-2 rounded-lg font-bold text-xs transition-all"
+                      style={{ background: '#E11D48', color: '#FFFFFF', fontFamily: 'Poppins, sans-serif' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#BE123C'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#E11D48'}
                     >
-                      {method.label}
+                      <i className="fa fa-check mr-1"></i>
+                      APPLY
                     </button>
+                  </div>
+                  {couponError && (
+                    <div className="p-2 rounded flex items-center gap-2 mb-3" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2' }}>
+                      <i className="fa fa-exclamation-circle" style={{ color: '#DC2626', fontSize: '11px' }}></i>
+                      <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
+                        {couponError}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Available Coupons */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                      <i className="fa fa-sparkles mr-1" style={{ fontSize: '10px' }}></i>
+                      Available Offers
+                    </p>
+                    {[
+                      { code: 'SAVE10', discount: '10%' },
+                      { code: 'FLAT50', discount: '₹50' },
+                      { code: 'WELCOME20', discount: '20%' },
+                    ].map((coupon) => (
+                      <button
+                        key={coupon.code}
+                        onClick={() => {
+                          setCouponCode(coupon.code);
+                          setCouponError('');
+                        }}
+                        className="w-full p-2 rounded-lg border transition-all text-left flex items-center justify-between"
+                        style={{ 
+                          borderColor: couponCode === coupon.code ? '#E11D48' : '#E5E7EB',
+                          background: couponCode === coupon.code ? '#FEF2F2' : '#FFFFFF',
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: '#E11D48' }}>
+                            <i className="fa fa-percent" style={{ color: '#FFFFFF', fontSize: '10px' }}></i>
+                          </div>
+                          <span className="text-xs font-bold" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                            {coupon.code}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
+                          {coupon.discount}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg flex items-center justify-between" 
+                  style={{ background: '#D1FAE5', border: '2px solid #10B981' }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#10B981' }}>
+                      <i className="fa fa-check" style={{ color: '#FFFFFF', fontSize: '12px' }}></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold" style={{ color: '#10B981', fontFamily: 'Poppins, sans-serif' }}>
+                        {appliedCoupon.code}
+                      </p>
+                      <p className="text-xs font-semibold" style={{ color: '#059669' }}>
+                        Saved ₹{appliedCoupon.type === 'percentage' ? Math.round((subtotal * appliedCoupon.discount) / 100) : appliedCoupon.discount}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleRemoveCoupon}
+                    className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+                    style={{ background: '#DC2626', color: '#FFFFFF' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#B91C1C'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#DC2626'}
+                  >
+                    <i className="fa fa-times mr-1"></i>
+                    REMOVE
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Side - Detailed Bill */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl shadow-sm sticky top-24" style={{ border: '1px solid #E5E7EB' }}>
+              {/* Bill Header */}
+              <div className="p-4 border-b" style={{ borderColor: '#E5E7EB', background: 'linear-gradient(135deg, #E11D48 0%, #BE123C 100%)' }}>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold" style={{ color: '#FFFFFF', fontFamily: 'Poppins, sans-serif' }}>
+                    <i className="fa fa-file-invoice mr-2"></i>
+                    Order Bill
+                  </h2>
+                  <div className="text-xs font-semibold px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.2)', color: '#FFFFFF' }}>
+                    {cart.length} {cart.length === 1 ? 'Item' : 'Items'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cart Items - Compact View */}
+              <div className="p-3">
+                <h3 className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                  <i className="fa fa-shopping-basket text-sm" style={{ color: '#E11D48' }}></i>
+                  Items Ordered
+                </h3>
+                <div className="space-y-2 mb-3 max-h-72 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#E11D48 #F9FAFB' }}>
+                  {cart.map((item, index) => (
+                    <div key={`${item.productId || item.id}-${item.type}-${index}`} className="p-2.5 rounded-lg" style={{ background: '#F9FAFB', border: '1px solid #E5E7EB' }}>
+                      <div className="flex items-start justify-between mb-1.5">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-xs font-bold leading-tight" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                              {item.name || item.productName}
+                            </span>
+                            {item.type === 'subscription' && (
+                              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: '#E11D48', color: '#FFFFFF' }}>
+                                SUB
+                              </span>
+                            )}
+                          </div>
+                          
+                          {item.type === 'subscription' ? (
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 text-xs" style={{ color: '#6B7280' }}>
+                                <i className="fa fa-calendar-check text-xs"></i>
+                                <span>{item.duration} days • {new Date(item.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                              </div>
+                              {item.skipDates && item.skipDates.length > 0 && (
+                                <div className="flex items-center gap-1.5 text-xs" style={{ color: '#F59E0B' }}>
+                                  <i className="fa fa-ban text-xs"></i>
+                                  <span>{item.skipDates.length} skip days</span>
+                                </div>
+                              )}
+                              {item.addons && item.addons.length > 0 && (
+                                <div className="mt-1.5 pt-1.5 border-t" style={{ borderColor: '#E5E7EB' }}>
+                                  <div className="space-y-0.5">
+                                    {item.addons.map((addon: any, addonIndex: number) => (
+                                      <div key={addonIndex} className="flex items-center justify-between text-xs">
+                                        <span style={{ color: '#6B7280' }}>
+                                          <i className="fa fa-plus-circle mr-1 text-xs" style={{ color: '#10B981' }}></i>
+                                          {addon.name}
+                                        </span>
+                                        <span className="font-bold" style={{ color: '#10B981' }}>+₹{addon.price}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <span style={{ color: '#6B7280' }}>
+                                ₹{item.price} each
+                              </span>
+                              {/* Quantity Controls */}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleQuantityChange(index, item.quantity - 1)}
+                                  className="w-6 h-6 rounded-full flex items-center justify-center transition-all"
+                                  style={{ background: '#FEE2E2', color: '#E11D48' }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#E11D48';
+                                    e.currentTarget.style.color = '#FFFFFF';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#FEE2E2';
+                                    e.currentTarget.style.color = '#E11D48';
+                                  }}
+                                >
+                                  <i className="fa fa-minus" style={{ fontSize: '10px' }}></i>
+                                </button>
+                                <span className="text-sm font-bold w-6 text-center" style={{ color: '#0E1214' }}>
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  onClick={() => handleQuantityChange(index, item.quantity + 1)}
+                                  className="w-6 h-6 rounded-full flex items-center justify-center transition-all"
+                                  style={{ background: '#D1FAE5', color: '#10B981' }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#10B981';
+                                    e.currentTarget.style.color = '#FFFFFF';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#D1FAE5';
+                                    e.currentTarget.style.color = '#10B981';
+                                  }}
+                                >
+                                  <i className="fa fa-plus" style={{ fontSize: '10px' }}></i>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Delete Button - Show for ALL items */}
+                        <button
+                          onClick={() => handleRemoveItem(index)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+                          style={{ background: '#FEE2E2', color: '#E11D48' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#E11D48';
+                            e.currentTarget.style.color = '#FFFFFF';
+                            e.currentTarget.style.transform = 'scale(1.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#FEE2E2';
+                            e.currentTarget.style.color = '#E11D48';
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          title="Remove from cart"
+                        >
+                          <i className="fa fa-trash text-xs"></i>
+                        </button>
+                      </div>
+                      
+                      {/* Item Total */}
+                      <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t" style={{ borderColor: '#E5E7EB' }}>
+                        <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                          Total
+                        </span>
+                        <span className="text-base font-bold" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
+                          ₹{item.type === 'subscription' ? (item.subscriptionPrice || item.totalPrice || item.price || 0) : (item.price * item.quantity)}
+                        </span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Right Side - Order Summary */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl p-5 shadow-sm sticky top-24" style={{ border: '1px solid #E5E7EB' }}>
-              <h2 className="text-base font-bold mb-4" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                Order Summary
-              </h2>
-
-              {/* Cart Items */}
-              <div className="space-y-2 mb-5 max-h-60 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {cart.map((item, index) => (
-                  <div key={`${item.productId || item.id}-${item.type}-${index}`} className="flex items-start gap-2 pb-2 border-b" style={{ borderColor: '#E5E7EB' }}>
-                    <div className="flex-1">
-                      <p className="text-xs font-bold mb-0.5" style={{ color: '#0E1214' }}>
-                        {item.name || item.productName}
-                      </p>
-                      {item.type === 'subscription' ? (
-                        <div className="text-xs" style={{ color: '#6B7280' }}>
-                          <p>{item.duration} days • Start: {new Date(item.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
-                          {item.skipDates && item.skipDates.length > 0 && (
-                            <p className="mt-0.5">{item.skipDates.length} skip days</p>
-                          )}
-                          {item.addons && item.addons.length > 0 && (
-                            <p className="mt-0.5">{item.addons.length} add-ons</p>
-                          )}
+              {/* Bill Breakdown - Accordion */}
+              <div className="px-3 pb-3">
+                <div className="p-3 rounded-lg" style={{ background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)', border: '1px solid #E5E7EB' }}>
+                  {/* Accordion Header */}
+                  <button
+                    onClick={() => setShowBillBreakdown(!showBillBreakdown)}
+                    className="w-full flex items-center justify-between mb-2"
+                  >
+                    <h3 className="text-sm font-bold flex items-center gap-1.5" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                      <i className="fa fa-calculator text-sm" style={{ color: '#E11D48' }}></i>
+                      Bill Breakdown
+                    </h3>
+                    <i className={`fa fa-chevron-${showBillBreakdown ? 'up' : 'down'} text-xs transition-transform`} style={{ color: '#E11D48' }}></i>
+                  </button>
+                  
+                  {/* Accordion Content */}
+                  {showBillBreakdown && (
+                  <div className="space-y-2">
+                    {/* Item Total */}
+                    <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#FFFFFF' }}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: '#FEF2F2' }}>
+                          <i className="fa fa-shopping-bag text-xs" style={{ color: '#E11D48' }}></i>
                         </div>
-                      ) : (
-                        <p className="text-xs" style={{ color: '#6B7280' }}>
-                          Qty: {item.quantity}
-                        </p>
-                      )}
+                        <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>Item Total</span>
+                      </div>
+                      <span className="text-sm font-bold" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>₹{subtotal}</span>
                     </div>
-                      <span className="text-xs font-bold" style={{ color: '#E11D48' }}>
-                        ₹{item.type === 'subscription' ? (item.subscriptionPrice || item.totalPrice || item.price || 0) : (item.price * item.quantity)}
-                      </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Coupon Section */}
-              <div className="mb-5">
-                {!appliedCoupon ? (
-                  <div>
-                    <label className="block text-xs font-bold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                      Have a Coupon Code?
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={couponCode}
-                        onChange={(e) => {
-                          setCouponCode(e.target.value);
-                          setCouponError('');
-                        }}
-                        placeholder="Enter coupon code"
-                        className="flex-1 px-4 py-2.5 border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-600"
-                        style={{ borderColor: couponError ? '#DC2626' : '#E5E7EB' }}
-                      />
-                      <button
-                        onClick={handleApplyCoupon}
-                        className="px-4 py-2.5 rounded-xl font-semibold text-xs transition-all"
-                        style={{ background: '#E11D48', color: '#FFFFFF', fontFamily: 'Poppins, sans-serif' }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#BE123C'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#E11D48'}
-                      >
-                        Apply
-                      </button>
-                    </div>
-                    {couponError && (
-                      <p className="text-xs mt-2" style={{ color: '#DC2626' }}>
-                        {couponError}
-                      </p>
+                    
+                    {/* Delivery Charges */}
+                    {cart.some((item: any) => item.type !== 'subscription') && (
+                      <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#FFFFFF' }}>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded flex items-center justify-center" 
+                            style={{ background: oneTimeFee === 0 ? '#D1FAE5' : '#FEF3C7' }}>
+                            <i className="fa fa-truck text-xs" style={{ 
+                              color: oneTimeFee === 0 ? '#10B981' : '#F59E0B'
+                            }}></i>
+                          </div>
+                          <span className="text-xs font-semibold" style={{ color: '#0E1214' }}>
+                            {deliveryType === 'express' ? `Express (${deliveryDistance}km)` : deliveryType === 'scheduled' ? 'Scheduled' : 'Standard'}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold" style={{ 
+                          color: oneTimeFee === 0 ? '#10B981' : '#0E1214',
+                          fontFamily: 'Poppins, sans-serif' 
+                        }}>
+                          {oneTimeFee === 0 ? 'FREE' : `₹${oneTimeFee}`}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {cart.some((item: any) => item.type === 'subscription') && (
+                      <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#FFFFFF' }}>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: '#D1FAE5' }}>
+                            <i className="fa fa-calendar-check text-xs" style={{ color: '#10B981' }}></i>
+                          </div>
+                          <span className="text-xs font-semibold" style={{ color: '#0E1214' }}>Sub Delivery</span>
+                        </div>
+                        <span className="text-sm font-bold" style={{ color: '#10B981', fontFamily: 'Poppins, sans-serif' }}>FREE</span>
+                      </div>
                     )}
 
-                    {/* Available Coupons - Horizontal Scrollable */}
-                    <div className="mt-3">
-                      <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                        {[
-                          { code: 'SAVE10', discount: '10%' },
-                          { code: 'FLAT50', discount: '₹50' },
-                          { code: 'WELCOME20', discount: '20%' },
-                        ].map((coupon) => (
-                          <button
-                            key={coupon.code}
-                            onClick={() => {
-                              setCouponCode(coupon.code);
-                              setCouponError('');
-                            }}
-                            className="flex-shrink-0 px-3 py-2 rounded-lg border transition-all"
-                            style={{ 
-                              borderColor: couponCode === coupon.code ? '#E11D48' : '#E5E7EB',
-                              background: couponCode === coupon.code ? '#FEF2F2' : '#F9FAFB',
-                              borderWidth: '1.5px'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = '#E11D48';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = couponCode === coupon.code ? '#E11D48' : '#E5E7EB';
-                            }}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <svg className="w-3 h-3" fill="none" stroke="#E11D48" strokeWidth="2" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                              </svg>
-                              <span className="text-xs font-bold" style={{ color: '#E11D48' }}>
-                                {coupon.code}
-                              </span>
-                              <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                                {coupon.discount}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
+                    {/* Platform Fee */}
+                    <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#FFFFFF' }}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: '#EEF2FF' }}>
+                          <i className="fa fa-cogs text-xs" style={{ color: '#6366F1' }}></i>
+                        </div>
+                        <span className="text-xs font-semibold" style={{ color: '#0E1214' }}>Platform Fee</span>
                       </div>
+                      <span className="text-sm font-bold" style={{ color: platformFee === 0 ? '#10B981' : '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                        {platformFee === 0 ? 'FREE' : `₹${platformFee}`}
+                      </span>
                     </div>
+
+                    {/* Packaging Charge */}
+                    {packagingCharge > 0 && (
+                      <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#FFFFFF' }}>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: '#FEF3C7' }}>
+                            <i className="fa fa-box text-xs" style={{ color: '#F59E0B' }}></i>
+                          </div>
+                          <span className="text-xs font-semibold" style={{ color: '#0E1214' }}>Packaging</span>
+                        </div>
+                        <span className="text-sm font-bold" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>₹{packagingCharge}</span>
+                      </div>
+                    )}
+                    
+                    {/* GST & Taxes */}
+                    <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#FFFFFF' }}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: '#FEF2F2' }}>
+                          <i className="fa fa-receipt text-xs" style={{ color: '#E11D48' }}></i>
+                        </div>
+                        <span className="text-xs font-semibold" style={{ color: '#0E1214' }}>GST & Tax</span>
+                      </div>
+                      <span className="text-sm font-bold" style={{ color: tax === 0 ? '#10B981' : '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                        {tax === 0 ? 'FREE' : `₹${tax}`}
+                      </span>
+                    </div>
+
+                    {/* Coupon Discount */}
+                    {appliedCoupon && (
+                      <div className="flex justify-between items-center p-1.5 rounded-lg" style={{ background: '#D1FAE5', border: '1px dashed #10B981' }}>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: '#10B981' }}>
+                            <i className="fa fa-tag text-xs" style={{ color: '#FFFFFF' }}></i>
+                          </div>
+                          <span className="text-xs font-bold" style={{ color: '#10B981' }}>{appliedCoupon.code}</span>
+                        </div>
+                        <span className="text-sm font-bold" style={{ color: '#10B981', fontFamily: 'Poppins, sans-serif' }}>-₹{couponDiscount}</span>
+                      </div>
+                    )}
+
                   </div>
-                ) : (
-                  <div className="p-3 rounded-xl border flex items-center justify-between" 
-                    style={{ background: '#D1FAE5', borderColor: '#10B981' }}>
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="#10B981" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  )}
+                </div>
+              </div>
+
+              {/* Place Order Button & Footer */}
+              <div className="px-3 pb-3">
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={!selectedAddressId || placingOrder}
+                  className="w-full py-3 rounded-lg font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  style={{ 
+                    background: placingOrder ? '#9CA3AF' : 'linear-gradient(135deg, #E11D48 0%, #BE123C 100%)', 
+                    color: '#FFFFFF', 
+                    fontFamily: 'Poppins, sans-serif',
+                    boxShadow: '0 4px 12px rgba(225, 29, 72, 0.3)'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!placingOrder && selectedAddressId) {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(225, 29, 72, 0.4)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(225, 29, 72, 0.3)';
+                  }}
+                >
+                  {placingOrder ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <div>
-                        <p className="text-xs font-bold" style={{ color: '#10B981' }}>
-                          {appliedCoupon.code} Applied
-                        </p>
-                        <p className="text-xs" style={{ color: '#059669' }}>
-                          You saved ₹{appliedCoupon.type === 'percentage' ? Math.round((subtotal * appliedCoupon.discount) / 100) : appliedCoupon.discount}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleRemoveCoupon}
-                      className="text-xs font-semibold"
-                      style={{ color: '#DC2626' }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
+                      <span>Processing...</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <i className="fa fa-check-circle" style={{ fontSize: '12px' }}></i>
+                      <span>Place Order • ₹{total}</span>
+                    </span>
+                  )}
+                </button>
 
-              {/* Bill Details */}
-              <div className="space-y-2 mb-5">
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: '#6B7280' }}>Subtotal</span>
-                  <span className="font-semibold" style={{ color: '#0E1214' }}>₹{subtotal}</span>
-                </div>
-                
-                {/* Delivery Fees - Separate for One-time and Subscription */}
-                {cart.some((item: any) => item.type !== 'subscription') && (
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: '#6B7280' }}>
-                      One-Time Delivery ({deliveryType === 'premium' ? `Premium • ${deliveryDistance}km` : 'Normal'})
-                    </span>
-                    <span className="font-semibold" style={{ color: oneTimeFee === 0 ? '#10B981' : '#0E1214' }}>
-                      {oneTimeFee === 0 ? 'FREE' : `₹${oneTimeFee}`}
-                    </span>
+                {/* Security & Terms */}
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center justify-center gap-1.5" style={{ fontSize: '10px', color: '#10B981' }}>
+                    <i className="fa fa-shield-alt" style={{ fontSize: '9px' }}></i>
+                    <span className="font-semibold">100% Secure Payment</span>
                   </div>
-                )}
-                
-                {cart.some((item: any) => item.type === 'subscription') && (
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: '#6B7280' }}>Subscription Delivery</span>
-                    <span className="font-semibold" style={{ color: '#10B981' }}>FREE</span>
-                  </div>
-                )}
-                
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: '#6B7280' }}>Tax (5%)</span>
-                  <span className="font-semibold" style={{ color: '#0E1214' }}>₹{tax}</span>
-                </div>
-                {appliedCoupon && (
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: '#10B981' }}>Coupon Discount</span>
-                    <span className="font-semibold" style={{ color: '#10B981' }}>-₹{couponDiscount}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-bold pt-2 border-t" style={{ borderColor: '#E5E7EB' }}>
-                  <span style={{ color: '#0E1214' }}>Total</span>
-                  <span style={{ color: '#E11D48' }}>₹{total}</span>
+                  <p className="text-center" style={{ color: '#9CA3AF', fontSize: '9px' }}>
+                    By placing order, you agree to our Terms
+                  </p>
                 </div>
               </div>
-
-              {/* Place Order Button */}
-              <button
-                onClick={handlePlaceOrder}
-                disabled={!selectedAddressId || placingOrder}
-                className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ background: '#E11D48', color: '#FFFFFF', fontFamily: 'Poppins, sans-serif' }}
-              >
-                {placingOrder ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Placing Order...
-                  </span>
-                ) : (
-                  `Place Order (₹${total})`
-                )}
-              </button>
-
-              <p className="text-xs text-center mt-3" style={{ color: '#9CA3AF' }}>
-                By placing order, you agree to our Terms
-              </p>
             </div>
           </div>
         </div>
@@ -1388,6 +1852,91 @@ export default function CheckoutPage() {
             <p className="text-sm text-center" style={{ color: '#6B7280' }}>
               {successMessage}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Item Confirmation Modal */}
+      {showRemoveModal && itemToRemove !== null && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => {
+            setShowRemoveModal(false);
+            setItemToRemove(null);
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl transform transition-all"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: 'scaleIn 0.2s ease-out' }}
+          >
+            {/* Icon */}
+            <div className="flex justify-center mb-4">
+              <div 
+                className="w-16 h-16 rounded-full flex items-center justify-center"
+                style={{ background: '#FEE2E2' }}
+              >
+                <i className="fa fa-trash text-3xl" style={{ color: '#DC2626' }}></i>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-center mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+              Remove from Cart?
+            </h3>
+
+            {/* Message */}
+            <p className="text-sm text-center mb-2" style={{ color: '#6B7280' }}>
+              Are you sure you want to remove
+            </p>
+            <p className="text-base font-bold text-center mb-6" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
+              "{cart[itemToRemove].name || cart[itemToRemove].productName}"
+            </p>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowRemoveModal(false);
+                  setItemToRemove(null);
+                }}
+                className="flex-1 py-3 rounded-lg font-semibold text-sm transition-all"
+                style={{ 
+                  background: '#F3F4F6', 
+                  color: '#6B7280',
+                  fontFamily: 'Poppins, sans-serif'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemoveItem}
+                className="flex-1 py-3 rounded-lg font-semibold text-sm transition-all"
+                style={{ 
+                  background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)', 
+                  color: '#FFFFFF',
+                  fontFamily: 'Poppins, sans-serif',
+                  boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(220, 38, 38, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.3)';
+                }}
+              >
+                Remove
+              </button>
+            </div>
           </div>
         </div>
       )}

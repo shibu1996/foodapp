@@ -12,6 +12,10 @@ import categoryRoutes from './modules/food/routes/categoryRoutes.js';
 import orderRoutes from './modules/food/routes/orderRoutes.js';
 import subscriptionRoutes from './modules/food/routes/subscriptionRoutes.js';
 import planRoutes from './modules/food/routes/planRoutes.js';
+import chargeRoutes from './modules/food/routes/chargeRoutes.js';
+import timeSlotRoutes from './modules/food/routes/timeSlotRoutes.js';
+import outletRoutes from './modules/food/routes/outletRoutes.js';
+import seedCharges from './modules/food/utils/seedCharges.js';
 
 dotenv.config();
 
@@ -55,6 +59,9 @@ app.use('/api/food/categories', categoryRoutes);
 app.use('/api/food/orders', orderRoutes);
 app.use('/api/food/subscriptions', subscriptionRoutes);
 app.use('/api/food/plans', planRoutes);
+app.use('/api/food/charges', chargeRoutes);
+app.use('/api/food/time-slots', timeSlotRoutes);
+app.use('/api/food/outlets', outletRoutes);
 
 // Basic health check
 app.get('/health', (req, res) => {
@@ -141,6 +148,9 @@ const startServer = async () => {
     
     // Initialize Database
     await connectDatabase();
+    
+    // Seed default charges (platform fee, etc.)
+    await seedCharges();
     
     // Initialize Redis (non-blocking - app works without Redis)
     let redisAvailable = false;

@@ -1,14 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
+import { FoodHeader } from '@/app/components/FoodHeader';
 
-const TIME_SLOTS = [
-  { id: 'slot1', time: '12:00 PM - 1:00 PM', icon: '🌅' },
-  { id: 'slot2', time: '1:00 PM - 2:00 PM', icon: '☀️' },
-  { id: 'slot3', time: '2:00 PM - 3:00 PM', icon: '🌤️' },
-];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+interface TimeSlot {
+  _id: string;
+  label: string;
+  startTime: string;
+  endTime: string;
+  durationHours: number;
+  isActive: boolean;
+  order: number;
+}
 
 export default function TimeSlotPage() {
   const router = useRouter();
@@ -16,6 +23,64 @@ export default function TimeSlotPage() {
   const { state, updateState } = useSubscription();
   const isEditMode = searchParams?.get('editSchedule') === 'true'; // Check if editing schedule
   const [selectedSlot, setSelectedSlot] = useState(state.deliverySlot || '');
+  const [user, setUser] = useState<any>(null);
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load user on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  // Load time slots from API
+  useEffect(() => {
+    const loadTimeSlots = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${API_BASE_URL}/api/food/time-slots/active`, {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data.length > 0) {
+            setTimeSlots(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error loading time slots:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTimeSlots();
+  }, []);
+
+  // Convert 24-hour time to 12-hour format
+  const formatTime = (time24: string) => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  // Get icon based on time
+  const getTimeIcon = (startTime: string) => {
+    const hours = parseInt(startTime.split(':')[0]);
+    if (hours >= 6 && hours < 9) return '🌅'; // Early Morning
+    if (hours >= 9 && hours < 12) return '☀️'; // Morning
+    if (hours >= 12 && hours < 15) return '🌤️'; // Afternoon
+    if (hours >= 15 && hours < 18) return '🌆'; // Evening
+    if (hours >= 18 && hours < 21) return '🌇'; // Late Evening
+    return '🌙'; // Night
+  };
 
   const handleNext = () => {
     if (!selectedSlot) {
@@ -37,15 +102,28 @@ export default function TimeSlotPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F9FAFB' }}>
+      {/* Header */}
+      <FoodHeader 
+        user={user}
+        showLocation={false}
+        showSearch={false}
+        showCart={false}
+        onLogout={() => {
+          localStorage.clear();
+          router.push('/auth');
+        }}
+        centerTitle="New Subscription"
+      />
+
       {/* Progress Bar */}
       <div className="bg-white border-b" style={{ borderColor: '#E5E7EB' }}>
         <div className="max-w-3xl mx-auto px-6 md:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 3 of 9</span>
+            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 3 of 6</span>
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Delivery Time</span>
           </div>
           <div className="w-full rounded-full h-1.5" style={{ backgroundColor: '#E5E7EB' }}>
-            <div className="h-1.5 rounded-full" style={{ width: '33.3%', backgroundColor: '#E11D48' }}></div>
+            <div className="h-1.5 rounded-full" style={{ width: '50%', backgroundColor: '#E11D48' }}></div>
           </div>
         </div>
       </div>
@@ -98,52 +176,67 @@ export default function TimeSlotPage() {
 
         {/* Time Slot Options */}
         <div className="space-y-3 mb-6">
-          {TIME_SLOTS.map((slot) => {
-            const isSelected = selectedSlot === slot.time;
-            return (
-            <button
-              key={slot.id}
-              onClick={() => setSelectedSlot(slot.time)}
-              className="w-full p-4 rounded-xl border-2 transition text-left"
-              style={{
-                borderColor: isSelected ? '#E11D48' : '#E5E7EB',
-                backgroundColor: isSelected ? '#FEF2F2' : '#FFFFFF'
-              }}
-              onMouseEnter={(e) => {
-                if (!isSelected) e.currentTarget.style.borderColor = '#FEE2E2';
-              }}
-              onMouseLeave={(e) => {
-                if (!isSelected) e.currentTarget.style.borderColor = '#E5E7EB';
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#E11D48' }}></div>
+            </div>
+          ) : timeSlots.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border" style={{ borderColor: '#E5E7EB' }}>
+              <div className="text-5xl mb-3">🕐</div>
+              <h3 className="text-base font-semibold mb-1" style={{ color: '#0E1214' }}>No Time Slots Available</h3>
+              <p className="text-sm" style={{ color: '#6B7280' }}>
+                Please contact support or try again later
+              </p>
+            </div>
+          ) : (
+            timeSlots.map((slot) => {
+              const timeDisplay = `${formatTime(slot.startTime)} - ${formatTime(slot.endTime)}`;
+              const isSelected = selectedSlot === timeDisplay;
+              return (
+                <button
+                  key={slot._id}
+                  onClick={() => setSelectedSlot(timeDisplay)}
+                  className="w-full p-4 rounded-xl border-2 transition text-left"
                   style={{
-                    borderColor: isSelected ? '#E11D48' : '#D1D5DB',
-                    backgroundColor: isSelected ? '#E11D48' : 'transparent'
+                    borderColor: isSelected ? '#E11D48' : '#E5E7EB',
+                    backgroundColor: isSelected ? '#FEF2F2' : '#FFFFFF'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.borderColor = '#FEE2E2';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.borderColor = '#E5E7EB';
                   }}
                 >
-                  {isSelected && (
-                    <div className="w-2 h-2 bg-white rounded-full"></div>
-                  )}
-                </div>
-                
-                <span className="text-2xl">{slot.icon}</span>
-                
-                <div className="flex-1">
-                  <h3 className="text-base font-bold" style={{ color: '#0E1214' }}>{slot.time}</h3>
-                  <p className="text-xs" style={{ color: '#6B7280' }}>Daily delivery at this time</p>
-                </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
+                      style={{
+                        borderColor: isSelected ? '#E11D48' : '#D1D5DB',
+                        backgroundColor: isSelected ? '#E11D48' : 'transparent'
+                      }}
+                    >
+                      {isSelected && (
+                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                      )}
+                    </div>
+                    
+                    <span className="text-2xl">{getTimeIcon(slot.startTime)}</span>
+                    
+                    <div className="flex-1">
+                      <h3 className="text-base font-bold" style={{ color: '#0E1214' }}>{slot.label}</h3>
+                      <p className="text-xs" style={{ color: '#6B7280' }}>{timeDisplay} • Daily delivery</p>
+                    </div>
 
-                {isSelected && (
-                  <span className="px-2 py-0.5 text-xs font-semibold rounded-full" style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}>
-                    Selected
-                  </span>
-                )}
-              </div>
-            </button>
-          );
-          })}
+                    {isSelected && (
+                      <span className="px-2 py-0.5 text-xs font-semibold rounded-full" style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}>
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
 
         {/* Info Card */}
@@ -161,7 +254,7 @@ export default function TimeSlotPage() {
         <div className="flex gap-3">
           {!isEditMode && (
             <button
-              onClick={() => router.back()}
+              onClick={() => router.push('/food/subscribe/start-date')}
               className="px-5 py-2.5 border-2 rounded-lg font-semibold text-sm transition-all"
               style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: '#FFFFFF' }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F9FAFB'}
@@ -182,7 +275,7 @@ export default function TimeSlotPage() {
               if (selectedSlot) e.currentTarget.style.backgroundColor = '#E11D48';
             }}
           >
-            {isEditMode ? 'Update Delivery Time' : 'Next: Select Start Date'}
+            {isEditMode ? 'Update Delivery Time' : 'Next: Skip Rules'}
           </button>
         </div>
       </div>

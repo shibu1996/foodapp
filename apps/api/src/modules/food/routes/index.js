@@ -4,6 +4,7 @@ import categoryRoutes from './categoryRoutes.js';
 import orderRoutes from './orderRoutes.js';
 import subscriptionRoutes from './subscriptionRoutes.js';
 import subscriptionCartRoutes from './subscriptionCartRoutes.js';
+import chargeRoutes from './chargeRoutes.js';
 
 const router = Router();
 
@@ -13,6 +14,7 @@ router.use('/categories', categoryRoutes);
 router.use('/orders', orderRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/subscription-cart', subscriptionCartRoutes);
+router.use('/charges', chargeRoutes);
 
 export default router;
 

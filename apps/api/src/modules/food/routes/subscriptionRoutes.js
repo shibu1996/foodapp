@@ -14,6 +14,7 @@ import {
   updateSubscriptionStatus,
   getSubscriptionStats,
   getTodaysDeliveries,
+  deleteSubscription,
 } from '../controllers/subscriptionController.js';
 import { auth } from '../../../shared/middleware/auth.js';
 import { adminAuth } from '../../../shared/middleware/adminAuth.js';
@@ -38,6 +39,7 @@ router.get('/admin/stats', getSubscriptionStats); // adminAuth removed
 router.get('/admin/today', getTodaysDeliveries); // adminAuth removed
 router.get('/admin/:id', getSubscriptionByIdAdmin); // adminAuth removed - MUST be after specific routes
 router.patch('/admin/:id/status', updateSubscriptionStatus); // adminAuth removed
+router.delete('/:id', deleteSubscription); // adminAuth removed
 
 export default router;
 

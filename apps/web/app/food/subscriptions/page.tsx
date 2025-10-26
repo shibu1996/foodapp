@@ -23,6 +23,7 @@ interface Subscription {
   addons: { name: string; price: number }[];
   skipDays: { date: Date; reason?: string }[];
   maxSkipDays: number;
+  maxExtendedDays: number;
   status: string;
   totalAmount: number;
   paidAmount: number;
@@ -318,6 +319,7 @@ export default function MySubscriptionsPage() {
         addons: [{ name: 'Extra Rice', price: 20 }],
         skipDays: [{ date: new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000), reason: 'Holiday' }],
         maxSkipDays: 4,
+        maxExtendedDays: 5,
         status: 'active',
         totalAmount: 2850,
         paidAmount: 2850,
@@ -366,6 +368,7 @@ export default function MySubscriptionsPage() {
         ],
         skipDays: [],
         maxSkipDays: 1,
+        maxExtendedDays: 2,
         status: 'active',
         totalAmount: 665,
         paidAmount: 400,
@@ -403,6 +406,7 @@ export default function MySubscriptionsPage() {
         addons: [],
         skipDays: [],
         maxSkipDays: 2,
+        maxExtendedDays: 3,
         status: 'completed',
         totalAmount: 1425,
         paidAmount: 1425,
@@ -436,6 +440,7 @@ export default function MySubscriptionsPage() {
         addons: [{ name: 'Raita', price: 30 }],
         skipDays: [],
         maxSkipDays: 2,
+        maxExtendedDays: 3,
         status: 'cancelled',
         totalAmount: 1200,
         paidAmount: 1200,
@@ -469,6 +474,7 @@ export default function MySubscriptionsPage() {
         addons: [],
         skipDays: [],
         maxSkipDays: 3,
+        maxExtendedDays: 4,
         status: 'payment-failed',
         totalAmount: 1900,
         paidAmount: 0,
@@ -1175,6 +1181,11 @@ export default function MySubscriptionsPage() {
                           <span className="font-medium" style={{ color: '#6B7280' }}>
                             Skip: {sub.skipDays.length}/{sub.maxSkipDays}
                           </span>
+                          {sub.maxExtendedDays > 0 && (
+                            <span className="font-medium" style={{ color: '#6B7280' }}>
+                              Extended: {sub.skipDays.length}/{sub.maxExtendedDays}
+                            </span>
+                          )}
                         </div>
 
                         {/* Progress Bar - Compact */}

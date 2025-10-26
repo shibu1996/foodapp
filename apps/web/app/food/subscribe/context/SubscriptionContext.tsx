@@ -36,6 +36,7 @@ interface SubscriptionState {
   endDate: string;
   skipEnabled: boolean;
   maxSkips: number;
+  maxExtendedDays: number;
   addons: string[];
   addonPrice: number;
   dailyMeals: DailyMeal[];
@@ -67,6 +68,7 @@ const initialState: SubscriptionState = {
   endDate: '',
   skipEnabled: false,
   maxSkips: 0,
+  maxExtendedDays: 0,
   addons: [],
   addonPrice: 0,
   dailyMeals: [],
@@ -125,7 +127,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         hasImage: !!state.productImage,
         hasDescription: !!state.productDescription,
         basePrice: state.basePrice,
-        duration: state.duration
+        duration: state.duration,
+        maxSkips: state.maxSkips,
+        maxExtendedDays: state.maxExtendedDays
       });
       localStorage.setItem('subscriptionState', JSON.stringify(state));
     }

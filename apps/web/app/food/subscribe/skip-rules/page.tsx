@@ -3,6 +3,19 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
+import { FoodHeader } from '@/app/components/FoodHeader';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+interface Plan {
+  _id: string;
+  name: string;
+  duration: number;
+  maxSkipDays: number;
+  maxExtendedDays: number;
+  isActive: boolean;
+  description: string;
+}
 
 export default function SkipRulesPage() {
   const router = useRouter();
@@ -10,7 +23,9 @@ export default function SkipRulesPage() {
   const { state, updateState } = useSubscription();
   const isEditMode = searchParams?.get('editSkip') === 'true'; // Check if editing skip days
   const [selectedSkipDays, setSelectedSkipDays] = useState<string[]>(state.skipDates || []);
-  const [skipLater, setSkipLater] = useState(false); // User wants to skip selection for now
+  const [planLimitsLoaded, setPlanLimitsLoaded] = useState(false); // Track if fresh plan limits loaded
+  const [mounted, setMounted] = useState(false); // Track if component mounted and state loaded
+  const [user, setUser] = useState<any>(null);
   const [calendarDays, setCalendarDays] = useState<Array<{
     date: Date;
     dateString: string;
@@ -20,10 +35,100 @@ export default function SkipRulesPage() {
     isSkipped: boolean;
   }>>([]);
 
+  // Load user on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  // Wait for component to mount and state to load from localStorage
+  useEffect(() => {
+    // Give time for localStorage to load in context
+    const timer = setTimeout(() => {
+      setMounted(true);
+      console.log('✅ Component mounted, state loaded:', {
+        hasStartDate: !!state.startDate,
+        hasDuration: !!state.duration,
+        duration: state.duration
+      });
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Fetch fresh plan limits on page load to ensure latest values from admin
+  useEffect(() => {
+    const fetchFreshPlanLimits = async () => {
+      // Wait for component to mount first
+      if (!mounted) {
+        return;
+      }
+
+      // Only fetch if we have a duration but haven't loaded fresh limits yet
+      if (!state.duration || planLimitsLoaded || state.isCustomDuration) {
+        setPlanLimitsLoaded(true);
+        return;
+      }
+
+      try {
+        console.log('🔄 Fetching fresh plan limits for duration:', state.duration);
+        const response = await fetch(`${API_BASE_URL}/food/plans/active/meal?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          const plans = data.data || [];
+          const matchingPlan = plans.find((p: Plan) => p.duration === state.duration);
+          
+          if (matchingPlan) {
+            console.log('✅ Fresh plan limits fetched:', {
+              plan: matchingPlan.name,
+              maxSkipDays: matchingPlan.maxSkipDays,
+              maxExtendedDays: matchingPlan.maxExtendedDays
+            });
+            
+            // Update context with fresh plan limits
+            updateState({
+              maxSkips: matchingPlan.maxSkipDays,
+              maxExtendedDays: matchingPlan.maxExtendedDays
+            });
+          } else {
+            console.warn('⚠️ No matching plan found for duration:', state.duration);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching plan limits:', error);
+      } finally {
+        setPlanLimitsLoaded(true);
+      }
+    };
+
+    fetchFreshPlanLimits();
+  }, [state.duration, state.isCustomDuration, planLimitsLoaded, updateState, mounted]);
+
   // Generate calendar days based on start date and duration
   // Calendar will extend by the number of skip days selected
   useEffect(() => {
+    // Wait for component to mount before validation check
+    if (!mounted) {
+      return;
+    }
+
+    // Validate after state has loaded
     if (!state.startDate || !state.duration) {
+      console.warn('⚠️ Missing required data, redirecting to start-date:', {
+        hasStartDate: !!state.startDate,
+        hasDuration: !!state.duration
+      });
       router.push('/food/subscribe/start-date');
       return;
     }
@@ -55,7 +160,7 @@ export default function SkipRulesPage() {
     }
     
     setCalendarDays(days);
-  }, [state.startDate, state.duration, selectedSkipDays, router]);
+  }, [state.startDate, state.duration, selectedSkipDays, router, mounted]);
 
   const toggleSkipDay = (dateString: string) => {
     if (selectedSkipDays.includes(dateString)) {
@@ -89,25 +194,6 @@ export default function SkipRulesPage() {
   };
 
   const handleNext = () => {
-    // If user chooses to skip later, don't set any skip days now
-    if (skipLater) {
-      updateState({ 
-        skipDates: [],
-        skipEnabled: false,
-        // Keep the original end date as is
-      });
-      
-      // Navigate based on mode
-      if (isEditMode) {
-        console.log('🎯 Edit Mode - Navigating back to summary');
-        router.push('/food/subscribe/summary');
-      } else {
-        console.log('🎯 Regular Mode - Navigating to addons');
-        router.push('/food/subscribe/addons');
-      }
-      return;
-    }
-
     // Calculate new end date by extending subscription for skip days
     const skipCount = selectedSkipDays.length;
     let newEndDate = state.endDate;
@@ -135,23 +221,19 @@ export default function SkipRulesPage() {
     }
   };
 
-  // Product-level settings (will come from admin panel later)
-  // For now, using dynamic values based on plan duration
-  const getSkipLimit = (duration: number) => {
-    // Skip limit in ORIGINAL period (days 1 to duration)
-    return Math.floor(duration / 7); // e.g., 30 days = 4 skips, 15 days = 2 skips
-  };
-  
+  // Get skip and extension limits from plan (stored in context from Duration selection)
+  // These values come from the selected plan in Step 1
+  // Fallback to calculated values if not set (for backward compatibility)
+  const getSkipLimit = (duration: number) => Math.floor(duration / 7);
   const getMaxExtension = (duration: number) => {
-    // Max NEW days that can be added
-    if (duration >= 30) return 10; // 30+ days: max 10 days extension
-    if (duration >= 15) return 7;  // 15-29 days: max 7 days extension
-    if (duration >= 7) return 5;   // 7-14 days: max 5 days extension
-    return 3; // Less than 7 days: max 3 days extension
+    if (duration >= 30) return 10;
+    if (duration >= 15) return 7;
+    if (duration >= 7) return 5;
+    return 3;
   };
   
-  const skipLimit = getSkipLimit(state.duration || 0); // Max skips in original period
-  const maxExtension = getMaxExtension(state.duration || 0); // Max extension days
+  const skipLimit = state.maxSkips || getSkipLimit(state.duration || 0); // Max skips in original period
+  const maxExtension = state.maxExtendedDays || getMaxExtension(state.duration || 0); // Max extension days
   
   // Calculate skips in original period vs extended period
   const originalPeriodEnd = state.duration || 0;
@@ -167,17 +249,42 @@ export default function SkipRulesPage() {
   const remainingExtension = maxExtension - currentExtension;
   const remainingSkipsInOriginal = skipLimit - skipsInOriginalPeriod;
 
+  // Show loading state while mounting and loading state from localStorage
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-gray-200 border-t-[#E11D48] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-sm" style={{ color: '#6B7280' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
+      {/* Header */}
+      <FoodHeader 
+        user={user}
+        showLocation={false}
+        showSearch={false}
+        showCart={false}
+        onLogout={() => {
+          localStorage.clear();
+          router.push('/auth');
+        }}
+        centerTitle="New Subscription"
+      />
+
       {/* Progress Bar */}
       <div style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
         <div className="max-w-4xl mx-auto px-6 md:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 4 of 9</span>
+            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 4 of 6</span>
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Skip Days</span>
           </div>
           <div className="w-full rounded-full overflow-hidden" style={{ background: '#E5E7EB', height: '6px' }}>
-            <div style={{ width: '44.4%', background: '#E11D48', height: '6px' }}></div>
+            <div style={{ width: '66.7%', background: '#E11D48', height: '6px' }}></div>
           </div>
         </div>
       </div>
@@ -225,97 +332,7 @@ export default function SkipRulesPage() {
           </div>
         </div>
 
-        {/* Skip Now or Later Option */}
-        <div className="mb-6 p-5 rounded-xl border" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-          <h3 className="text-base font-semibold mb-3" style={{ color: '#0E1214' }}>
-            When do you want to select skip days?
-          </h3>
-          <div className="space-y-3">
-            {/* Option 1: Select Now */}
-            <button
-              onClick={() => setSkipLater(false)}
-              className="w-full p-4 rounded-xl border transition-all duration-200 hover:shadow-md text-left"
-              style={{
-                background: !skipLater ? '#FEF2F2' : '#FFFFFF',
-                borderColor: !skipLater ? '#E11D48' : '#E5E7EB',
-                borderWidth: !skipLater ? '2px' : '1px'
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div 
-                    className="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-                    style={{
-                      borderColor: !skipLater ? '#E11D48' : '#D1D5DB',
-                      background: !skipLater ? '#E11D48' : 'transparent'
-                    }}
-                  >
-                    {!skipLater && (
-                      <div className="w-2 h-2 rounded-full" style={{ background: '#FFFFFF' }}></div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold mb-1" style={{ color: '#0E1214' }}>
-                    📅 Select Skip Days Now
-                  </p>
-                  <p className="text-xs" style={{ color: '#6B7280' }}>
-                    Choose skip days from the calendar below. You can modify them later from your subscription dashboard (24 hours before delivery).
-                  </p>
-                </div>
-              </div>
-            </button>
-
-            {/* Option 2: Skip Later */}
-            <button
-              onClick={() => {
-                setSkipLater(true);
-                setSelectedSkipDays([]); // Clear any selected skip days
-              }}
-              className="w-full p-4 rounded-xl border transition-all duration-200 hover:shadow-md text-left"
-              style={{
-                background: skipLater ? '#FEF2F2' : '#FFFFFF',
-                borderColor: skipLater ? '#E11D48' : '#E5E7EB',
-                borderWidth: skipLater ? '2px' : '1px'
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div 
-                    className="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-                    style={{
-                      borderColor: skipLater ? '#E11D48' : '#D1D5DB',
-                      background: skipLater ? '#E11D48' : 'transparent'
-                    }}
-                  >
-                    {skipLater && (
-                      <div className="w-2 h-2 rounded-full" style={{ background: '#FFFFFF' }}></div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold mb-1" style={{ color: '#0E1214' }}>
-                    ⏰ I'll Select Later
-                  </p>
-                  <p className="text-xs" style={{ color: '#6B7280' }}>
-                    Skip this step for now. You can select skip days anytime from your subscription dashboard (must be 24 hours before delivery).
-                  </p>
-                  {skipLater && (
-                    <div className="mt-2 p-2 rounded-lg" style={{ background: '#FEF3C7', border: '1px solid #FDE68A' }}>
-                      <p className="text-xs font-medium" style={{ color: '#92400E' }}>
-                        💡 No worries! You'll have full control to add skip days from your subscription page.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Skip Stats - Only show if user wants to select now */}
-        {!skipLater && (
-        <>
+        {/* Skip Stats */}
         <div className="mb-6 space-y-3">
           {/* Original Period Skip Limit */}
           <div className="p-4 rounded-xl border" style={{ background: skipsInOriginalPeriod >= skipLimit ? '#FEE2E2' : '#FEF2F2', borderColor: '#FEE2E2' }}>
@@ -590,56 +607,12 @@ export default function SkipRulesPage() {
             </div>
           </div>
         )}
-        </>
-        )}
-
-        {/* Confirmation Message when Skip Later is selected */}
-        {skipLater && (
-          <div className="mb-6 p-6 rounded-xl border" style={{ background: 'linear-gradient(to right, #F0FDF4, #ECFDF5)', borderColor: '#BBF7D0' }}>
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 text-4xl">
-                ✅
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold mb-2" style={{ color: '#166534' }}>
-                  Perfect! You can skip days later
-                </h3>
-                <p className="text-sm mb-3" style={{ color: '#15803D' }}>
-                  No skip days will be set for now. You can manage skip days anytime from your subscription dashboard.
-                </p>
-                <div className="p-3 rounded-lg" style={{ background: '#FFFFFF', border: '1px solid #BBF7D0' }}>
-                  <p className="text-xs font-semibold mb-2" style={{ color: '#166534' }}>
-                    📌 How to add skip days later:
-                  </p>
-                  <ul className="space-y-1 text-xs" style={{ color: '#15803D' }}>
-                    <li className="flex items-start gap-2">
-                      <span className="flex-shrink-0 mt-0.5">•</span>
-                      <span>Go to your subscription dashboard after activating your plan</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="flex-shrink-0 mt-0.5">•</span>
-                      <span>Click "Manage Skip Days" option</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="flex-shrink-0 mt-0.5">•</span>
-                      <span>Select any date (must be at least 24 hours before delivery)</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="flex-shrink-0 mt-0.5">•</span>
-                      <span>Your subscription will automatically extend by the number of skip days</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Navigation Buttons */}
         <div className="flex gap-3">
           {!isEditMode && (
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push('/food/subscribe/timeslot')}
               className="px-5 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
               style={{ 
                 background: '#FFFFFF',
@@ -672,11 +645,9 @@ export default function SkipRulesPage() {
           >
             {isEditMode 
               ? 'Update Skip Days'
-              : skipLater 
-                ? '⏩ Skip This Step & Continue' 
-                : selectedSkipDays.length > 0 
-                  ? `Continue with ${selectedSkipDays.length} Skip Day${selectedSkipDays.length > 1 ? 's' : ''}`
-                  : 'Continue Without Skip Days'
+              : selectedSkipDays.length > 0 
+                ? `Continue with ${selectedSkipDays.length} Skip Day${selectedSkipDays.length > 1 ? 's' : ''}`
+                : 'Continue Without Skip Days'
             }
           </button>
         </div>

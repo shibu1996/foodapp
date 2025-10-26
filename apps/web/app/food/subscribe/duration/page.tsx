@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
+import { FoodHeader } from '@/app/components/FoodHeader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -27,6 +28,15 @@ export default function DurationPage() {
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isCustom, setIsCustom] = useState(state.isCustomDuration || false);
   const [customDays, setCustomDays] = useState<string>('');
+  const [user, setUser] = useState<any>(null);
+
+  // Load user on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
 
   // Get data from URL params as fallback for initial render
   const urlPrice = searchParams ? parseInt(searchParams.get('price') || '0') : 0;
@@ -38,21 +48,40 @@ export default function DurationPage() {
 
   // Track if data has been loaded
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Wait for component to mount and state to load from localStorage
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMounted(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Fetch plans from API
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/food/plans/active/meal`);
+        // Add cache-busting and no-cache headers to always get fresh data
+        const response = await fetch(`${API_BASE_URL}/food/plans/active/meal?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
         const data = await response.json();
         
         if (data.success) {
           const activePlans = data.data || [];
+          console.log('📦 Fresh plans fetched:', activePlans.length, 'plans');
           setPlans(activePlans);
           
           // Set selected plan based on current duration
           const currentPlan = activePlans.find((p: Plan) => p.duration === selectedDuration);
           if (currentPlan) {
+            console.log('✅ Selected plan:', currentPlan.name, '- maxSkipDays:', currentPlan.maxSkipDays, '- maxExtendedDays:', currentPlan.maxExtendedDays);
             setSelectedPlan(currentPlan);
           }
         }
@@ -67,8 +96,18 @@ export default function DurationPage() {
   }, []);
 
   useEffect(() => {
+    // Wait for component to mount first
+    if (!mounted) {
+      return;
+    }
+
     if (!searchParams) {
       console.log('⚠️ No search params available');
+      // Check if we have data in state
+      if (state.productId && state.productName && state.basePrice) {
+        console.log('✅ Using existing state data (no URL params needed)');
+        setDataLoaded(true);
+      }
       return;
     }
     
@@ -113,6 +152,7 @@ export default function DurationPage() {
           endDate: '', // Clear old date
           skipEnabled: false,
           maxSkips: 0,
+          maxExtendedDays: 0,
           addons: [], // Clear old addons
           addonPrice: 0,
           skipDates: [], // Clear old skip dates
@@ -168,12 +208,24 @@ export default function DurationPage() {
       
       setDataLoaded(true); // Mark data as loaded
     } else {
-      console.warn('⚠️ Missing required params:', { productId, productName, price });
-      alert('Invalid subscription link. Redirecting to home page...');
-      router.push('/food/home');
+      // Check if we already have product data in state (from localStorage)
+      if (state.productId && state.productName && state.basePrice) {
+        console.log('✅ No URL params but state has product data from localStorage');
+        setDataLoaded(true);
+      } else {
+        console.warn('⚠️ Missing required params and no data in state:', { 
+          productId, 
+          productName, 
+          price,
+          stateProductId: state.productId,
+          stateProductName: state.productName 
+        });
+        alert('Invalid subscription link. Redirecting to home page...');
+        router.push('/food/home');
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, mounted]);
 
   const getSkipAllowance = (days: number) => {
     return Math.floor(days / 7);
@@ -188,6 +240,13 @@ export default function DurationPage() {
     setSelectedDuration(days);
     setIsCustom(false);
     setCustomDays('');
+    
+    // Find and set the corresponding plan to get fresh values
+    const plan = plans.find((p: Plan) => p.duration === days);
+    if (plan) {
+      console.log('🎯 Plan selected:', plan.name, '- maxSkipDays:', plan.maxSkipDays, '- maxExtendedDays:', plan.maxExtendedDays);
+      setSelectedPlan(plan);
+    }
   };
 
   const handleCustomSelect = () => {
@@ -252,11 +311,25 @@ export default function DurationPage() {
       ? getSkipAllowance(finalDuration) 
       : selectedPlan?.maxSkipDays || getSkipAllowance(finalDuration);
     
+    // Determine maxExtendedDays from selected plan or use default
+    const maxExtendedDays = isCustom 
+      ? getSkipAllowance(finalDuration) 
+      : selectedPlan?.maxExtendedDays || 0;
+    
+    console.log('🎯 Plan limits being set:', {
+      duration: finalDuration,
+      maxSkips,
+      maxExtendedDays,
+      source: isCustom ? 'calculated' : 'from plan',
+      planName: selectedPlan?.name || 'N/A'
+    });
+    
     // Update state with all necessary data (ensuring nothing is lost)
     updateState({
       duration: finalDuration,
       isCustomDuration: isCustom,
       maxSkips: maxSkips,
+      maxExtendedDays: maxExtendedDays,
       basePrice: currentPrice,
       // Use data from URL as primary source, state as fallback
       productId: productId,
@@ -279,15 +352,28 @@ export default function DurationPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F9FAFB' }}>
+      {/* Header */}
+      <FoodHeader 
+        user={user}
+        showLocation={false}
+        showSearch={false}
+        showCart={false}
+        onLogout={() => {
+          localStorage.clear();
+          router.push('/auth');
+        }}
+        centerTitle="New Subscription"
+      />
+
       {/* Progress Bar */}
       <div className="bg-white border-b" style={{ borderColor: '#E5E7EB' }}>
         <div className="max-w-3xl mx-auto px-6 md:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 1 of 9</span>
+            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 1 of 6</span>
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Duration</span>
           </div>
           <div className="w-full rounded-full h-1.5" style={{ backgroundColor: '#E5E7EB' }}>
-            <div className="h-1.5 rounded-full" style={{ width: '11.1%', backgroundColor: '#E11D48' }}></div>
+            <div className="h-1.5 rounded-full" style={{ width: '16.7%', backgroundColor: '#E11D48' }}></div>
           </div>
         </div>
       </div>

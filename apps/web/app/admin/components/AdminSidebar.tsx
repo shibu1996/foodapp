@@ -34,6 +34,18 @@ const SubscriptionsIcon = () => (
   </svg>
 );
 
+const ChargesIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const OutletsIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+  </svg>
+);
+
 const ChevronDownIcon = ({ className = "" }: { className?: string }) => (
   <svg className={`w-4 h-4 transition-transform ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -106,7 +118,19 @@ export default function AdminSidebar() {
       submenu: [
         { name: 'All Subscriptions', path: '/admin/subscriptions' },
         { name: 'Plans', path: '/admin/subscriptions/plans' },
+        { name: 'Time Slots', path: '/admin/subscriptions/time-slots' },
+        { name: 'Delivery Boy', path: '/admin/subscriptions/delivery-boy' },
       ],
+    },
+    {
+      name: 'Charges',
+      path: '/admin/charges',
+      icon: <ChargesIcon />,
+    },
+    {
+      name: 'Outlets',
+      path: '/admin/outlets',
+      icon: <OutletsIcon />,
     },
   ];
 
@@ -123,12 +147,6 @@ export default function AdminSidebar() {
     const newState = !isCollapsed;
     setIsCollapsed(newState);
     localStorage.setItem('sidebarCollapsed', String(newState));
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/auth');
   };
 
   const isActive = (path: string) => pathname === path;
@@ -179,34 +197,6 @@ export default function AdminSidebar() {
           </button>
         </div>
       </div>
-
-      {/* User Profile */}
-      {!isCollapsed && (
-        <div className="relative p-6 border-b" style={{ borderColor: '#1F2937' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg"
-              style={{ backgroundColor: '#E11D48' }}
-            >
-              AD
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>Admin User</p>
-              <p className="text-xs" style={{ color: '#9CA3AF' }}>admin@foodapp.com</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Collapsed Profile */}
-      {isCollapsed && (
-        <div className="relative p-4 border-b flex justify-center" style={{ borderColor: '#1F2937' }}>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg"
-            style={{ backgroundColor: '#E11D48' }}
-          >
-            AD
-          </div>
-        </div>
-      )}
 
       {/* Navigation */}
       <nav className="relative flex-1 overflow-y-auto p-4 space-y-1"
@@ -328,33 +318,6 @@ export default function AdminSidebar() {
           );
         })}
       </nav>
-
-      {/* Logout */}
-      <div className="relative p-4 border-t" style={{ borderColor: '#1F2937' }}>
-        <button
-          onClick={handleLogout}
-          className={`w-full group flex items-center ${
-            isCollapsed ? 'justify-center' : 'gap-3'
-          } px-3 py-3 rounded-xl transition-all duration-200 font-medium border`}
-          style={{
-            backgroundColor: 'rgba(225, 29, 72, 0.1)',
-            borderColor: '#E11D48',
-            color: '#E11D48'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#E11D48';
-            e.currentTarget.style.color = '#FFFFFF';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(225, 29, 72, 0.1)';
-            e.currentTarget.style.color = '#E11D48';
-          }}
-          title={isCollapsed ? 'Logout' : ''}
-        >
-          <LogoutIcon />
-          {!isCollapsed && <span className="text-sm">Logout</span>}
-        </button>
-      </div>
     </div>
   );
 }

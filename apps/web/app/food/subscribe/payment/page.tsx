@@ -67,7 +67,9 @@ export default function PaymentPage() {
           paymentMethod: paymentMethod === 'upi' ? 'online' : paymentMethod === 'card' ? 'online' : 'wallet',
           couponCode: state.couponCode,
           specialInstructions: '',
-          autoRenewal: false
+          autoRenewal: false,
+          maxSkipDays: state.maxSkips,
+          maxExtendedDays: state.maxExtendedDays
         })
       });
 

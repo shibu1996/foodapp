@@ -4,18 +4,19 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
 import { apiClient } from '@restaurant-app/api-client';
+import { FoodHeader } from '@/app/components/FoodHeader';
 
 const ADDONS = [
-  { id: 'salad', name: 'Fresh Garden Salad', price: 10, emoji: '🥗' },
-  { id: 'curd', name: 'Fresh Curd (Dahi)', price: 15, emoji: '🥛' },
-  { id: 'sweet', name: 'Sweet Delight', price: 20, emoji: '🍮' },
-  { id: 'raita', name: 'Special Raita', price: 12, emoji: '🥙' },
+  { id: 'salad', name: 'Fresh Garden Salad', price: 10, icon: 'fa fa-leaf' },
+  { id: 'curd', name: 'Fresh Curd (Dahi)', price: 15, icon: 'fa fa-mug-hot' },
+  { id: 'sweet', name: 'Sweet Delight', price: 20, icon: 'fa fa-ice-cream' },
+  { id: 'raita', name: 'Special Raita', price: 12, icon: 'fa fa-bowl-food' },
 ];
 
 const TIME_SLOTS = [
-  { id: 'breakfast', label: 'Breakfast', time: '7:00 AM - 9:00 AM', emoji: '🌅' },
-  { id: 'lunch', label: 'Lunch', time: '12:00 PM - 2:00 PM', emoji: '☀️' },
-  { id: 'dinner', label: 'Dinner', time: '7:00 PM - 9:00 PM', emoji: '🌙' },
+  { id: 'breakfast', label: 'Breakfast', time: '7:00 AM - 9:00 AM', icon: 'fa fa-sunrise' },
+  { id: 'lunch', label: 'Lunch', time: '12:00 PM - 2:00 PM', icon: 'fa fa-sun' },
+  { id: 'dinner', label: 'Dinner', time: '7:00 PM - 9:00 PM', icon: 'fa fa-moon' },
 ];
 
 export default function SummaryPage() {
@@ -24,6 +25,15 @@ export default function SummaryPage() {
   const { state, updateState, calculatePrice, resetState } = useSubscription();
   const [couponCode, setCouponCode] = useState(state.couponCode || '');
   const [appliedCoupon, setAppliedCoupon] = useState(!!state.couponCode);
+  const [user, setUser] = useState<any>(null);
+
+  // Load user on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
 
   const skipDaysCount = state.skipDates?.length || 0;
   const duration = state.duration || 0;
@@ -36,6 +46,14 @@ export default function SummaryPage() {
   const baseTotal = basePrice * activeDays;
   const addonTotal = addonPrice * activeDays;
   const subtotal = baseTotal + addonTotal;
+  
+  // Regular price calculation (30% more than subscription price)
+  const regularPricePerDay = Math.round(basePrice * 1.3);
+  const regularBaseTotal = regularPricePerDay * activeDays;
+  const regularAddonTotal = addonPrice * activeDays; // Addon prices remain same
+  const regularTotalPrice = regularBaseTotal + regularAddonTotal;
+  const totalSavings = regularTotalPrice - subtotal;
+  const savingsPercentage = Math.round((totalSavings / regularTotalPrice) * 100);
   
   // No plan discount - subscriptionPrice is already discounted
   // Only apply coupon discount if any
@@ -496,16 +514,29 @@ export default function SummaryPage() {
           </div>
         </div>
       )}
+
+      {/* Header */}
+      <FoodHeader 
+        user={user}
+        showLocation={false}
+        showSearch={false}
+        showCart={false}
+        onLogout={() => {
+          localStorage.clear();
+          router.push('/auth');
+        }}
+        centerTitle="New Subscription"
+      />
       
       {/* Progress Bar */}
       <div style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
         <div className="max-w-6xl mx-auto px-6 md:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 6 of 9</span>
+            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 6 of 6</span>
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Review Summary</span>
           </div>
           <div className="w-full rounded-full overflow-hidden" style={{ background: '#E5E7EB', height: '6px' }}>
-            <div style={{ width: '66.6%', background: '#E11D48', height: '6px' }}></div>
+            <div style={{ width: '100%', background: '#E11D48', height: '6px' }}></div>
           </div>
         </div>
       </div>
@@ -573,8 +604,9 @@ export default function SummaryPage() {
               {/* Product Image and Name */}
               {(!state.productName || !state.productImage || !state.productDescription) && (
                 <div className="mb-3 p-4 rounded-lg" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2' }}>
-                  <p className="text-sm font-bold mb-1" style={{ color: '#E11D48' }}>
-                    ⚠️ Product details missing
+                  <p className="text-sm font-bold mb-1 flex items-center gap-2" style={{ color: '#E11D48' }}>
+                    <i className="fa fa-exclamation-triangle"></i>
+                    Product details missing
                   </p>
                   <p className="text-xs" style={{ color: '#9CA3AF' }}>
                     Redirecting to home page in 2 seconds... Please start the subscription flow from a product page.
@@ -592,27 +624,49 @@ export default function SummaryPage() {
                       onError={(e) => {
                         console.error('Failed to load image:', state.productImage);
                         e.currentTarget.style.display = 'none';
-                        e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center text-3xl">🍱</div>';
+                        e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center text-4xl" style="color: #E11D48;"><i class="fa fa-utensils"></i></div>';
                       }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-3xl">
-                      🍱
+                    <div className="w-full h-full flex items-center justify-center text-4xl" style={{ color: '#E11D48' }}>
+                      <i className="fa fa-utensils"></i>
                     </div>
                   )}
                 </div>
                 <div className="flex-1">
                   <h4 className="text-base font-bold mb-1" style={{ color: state.productName ? '#0E1214' : '#9CA3AF' }}>
-                    {state.productName || '⚠️ Product name not available'}
+                    {state.productName || (
+                      <span className="flex items-center gap-2">
+                        <i className="fa fa-exclamation-triangle text-sm"></i>
+                        Product name not available
+                      </span>
+                    )}
                   </h4>
                   <p className="text-xs mb-2" style={{ color: state.productDescription ? '#6B7280' : '#9CA3AF' }}>
-                    {state.productDescription || '⚠️ Description not available'}
+                    {state.productDescription || (
+                      <span className="flex items-center gap-2">
+                        <i className="fa fa-exclamation-triangle text-xs"></i>
+                        Description not available
+                      </span>
+                    )}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold" style={{ color: '#E11D48' }}>
-                      ₹{basePrice || 0}
+                  {/* Daily Price Comparison */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs line-through" style={{ color: '#991B1B' }}>
+                        ₹{regularPricePerDay}
+                      </span>
+                      <span className="text-lg font-bold" style={{ color: '#10B981' }}>
+                        ₹{basePrice || 0}
+                      </span>
+                      <span className="text-xs" style={{ color: '#6B7280' }}>per day</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-xs font-bold" style={{ 
+                      background: '#10B981', 
+                      color: '#FFFFFF' 
+                    }}>
+                      {savingsPercentage}% OFF
                     </span>
-                    <span className="text-xs" style={{ color: '#6B7280' }}>per day</span>
                   </div>
                 </div>
               </div>
@@ -624,11 +678,16 @@ export default function SummaryPage() {
                     {duration} Days
                   </p>
                 </div>
-                <div className="p-3 rounded-lg" style={{ background: '#F9FAFB' }}>
+                <div className="p-3 rounded-lg" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                   <p className="text-xs mb-1" style={{ color: '#6B7280' }}>Total Price</p>
-                  <p className="text-sm font-semibold" style={{ color: '#E11D48' }}>
-                    ₹{baseTotal}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs line-through" style={{ color: '#991B1B' }}>
+                      ₹{regularBaseTotal}
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: '#10B981' }}>
+                      ₹{baseTotal}
+                    </span>
+                  </div>
                 </div>
                 <div className="p-3 rounded-lg" style={{ background: '#F9FAFB' }}>
                   <p className="text-xs mb-1" style={{ color: '#6B7280' }}>Delivery Days</p>
@@ -649,7 +708,8 @@ export default function SummaryPage() {
             <div className="p-5 rounded-xl border" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-base font-bold mb-1" style={{ color: '#0E1214' }}>
+                  <h3 className="text-base font-bold mb-1 flex items-center gap-2" style={{ color: '#0E1214' }}>
+                    <i className="fa fa-calendar-days" style={{ color: '#E11D48' }}></i>
                     Delivery Schedule
                   </h3>
                   <p className="text-xs" style={{ color: '#6B7280' }}>
@@ -681,7 +741,7 @@ export default function SummaryPage() {
               <div className="space-y-3">
                 <div className="flex items-start gap-3 p-3 rounded-lg" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                   <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#10B981' }}>
-                    <span className="text-xl">📅</span>
+                    <i className="fa fa-calendar text-white text-xl"></i>
                   </div>
                   <div className="flex-1">
                     <p className="text-xs mb-0.5" style={{ color: '#166534' }}>Start Date</p>
@@ -701,8 +761,9 @@ export default function SummaryPage() {
                       {formatDate(state.endDate || '')}
                     </p>
                     {skipDaysCount > 0 && (
-                      <p className="text-xs mt-1" style={{ color: '#F59E0B' }}>
-                        ✨ Extended by {skipDaysCount} day{skipDaysCount > 1 ? 's' : ''} for skip days
+                      <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#F59E0B' }}>
+                        <i className="fa fa-sparkles"></i>
+                        Extended by {skipDaysCount} day{skipDaysCount > 1 ? 's' : ''} for skip days
                       </p>
                     )}
                   </div>
@@ -710,7 +771,7 @@ export default function SummaryPage() {
 
                 <div className="flex items-start gap-3 p-3 rounded-lg" style={{ background: '#EFF6FF', border: '1px solid #DBEAFE' }}>
                   <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#3B82F6' }}>
-                    <span className="text-lg">{selectedTimeSlot.emoji}</span>
+                    <i className={`${selectedTimeSlot.icon} text-white text-lg`}></i>
                   </div>
                   <div className="flex-1">
                     <p className="text-xs mb-0.5" style={{ color: '#1E40AF' }}>Delivery Time</p>
@@ -765,7 +826,7 @@ export default function SummaryPage() {
                 <div>
                   <div className="p-3 rounded-lg mb-3" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">🎉</span>
+                      <i className="fa fa-party-horn text-lg" style={{ color: '#15803D' }}></i>
                       <p className="text-xs font-semibold" style={{ color: '#15803D' }}>
                         Subscription Auto-Extended
                       </p>
@@ -859,7 +920,7 @@ export default function SummaryPage() {
                         style={{ background: '#F9FAFB' }}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{addon.emoji}</span>
+                          <i className={`${addon.icon} text-lg`} style={{ color: '#10B981' }}></i>
                           <span className="text-xs font-semibold" style={{ color: '#0E1214' }}>
                             {addon.name}
                           </span>
@@ -906,13 +967,68 @@ export default function SummaryPage() {
               
               {/* Base Price Section */}
               <div className="space-y-3 mb-4 pb-4" style={{ borderBottom: '1px solid #F3F4F6' }}>
-                {/* Info Note */}
-                <div className="p-2.5 rounded-lg" style={{ background: '#EFF6FF', border: '1px solid #DBEAFE' }}>
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs">💰</span>
-                    <p className="text-xs" style={{ color: '#1E40AF' }}>
-                      <strong>Special Subscription Price!</strong> You're already saving compared to regular one-time orders.
-                    </p>
+                {/* Price Comparison Card */}
+                <div className="p-4 rounded-lg" style={{ 
+                  background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF2F2 100%)', 
+                  border: '2px solid #10B981' 
+                }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <i className="fa fa-tags text-lg" style={{ color: '#10B981' }}></i>
+                    <h4 className="text-sm font-bold" style={{ color: '#166534' }}>
+                      You're Saving Big!
+                    </h4>
+                  </div>
+
+                  {/* Regular vs Subscription Comparison */}
+                  <div className="space-y-2 mb-3">
+                    {/* Regular Price */}
+                    <div className="flex justify-between items-center p-2 rounded" style={{ background: '#FFFFFF' }}>
+                      <div>
+                        <p className="text-xs font-semibold mb-0.5" style={{ color: '#6B7280' }}>Regular Price</p>
+                        <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                          ₹{regularPricePerDay}/day × {activeDays} days
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold line-through" style={{ color: '#991B1B' }}>
+                          ₹{regularTotalPrice}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Subscription Price */}
+                    <div className="flex justify-between items-center p-2 rounded" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                      <div>
+                        <p className="text-xs font-semibold mb-0.5" style={{ color: '#166534' }}>Subscription Price</p>
+                        <p className="text-xs" style={{ color: '#15803D' }}>
+                          ₹{basePrice}/day × {activeDays} days
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold" style={{ color: '#10B981' }}>
+                          ₹{baseTotal}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Savings Badge */}
+                  <div className="flex items-center justify-between p-2.5 rounded-lg" style={{ 
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)'
+                  }}>
+                    <div className="flex items-center gap-2">
+                      <i className="fa fa-circle-check text-white text-lg"></i>
+                      <span className="text-xs font-bold text-white">Your Savings</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-base font-bold text-white">
+                        ₹{totalSavings}
+                      </p>
+                      <p className="text-xs text-white opacity-90">
+                        ({savingsPercentage}% OFF)
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -959,7 +1075,7 @@ export default function SummaryPage() {
               {skipDaysCount > 0 && (
                 <div className="mb-4 p-3 rounded-lg" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                   <div className="flex items-start gap-2">
-                    <span className="text-sm">✨</span>
+                    <i className="fa fa-sparkles text-sm" style={{ color: '#15803D' }}></i>
                     <div>
                       <p className="text-xs font-semibold mb-1" style={{ color: '#166534' }}>
                         Subscription Auto-Extended by {skipDaysCount} Day{skipDaysCount > 1 ? 's' : ''}
@@ -1067,7 +1183,8 @@ export default function SummaryPage() {
                           </>
                         ) : (
                           <>
-                            🛒 Add to Cart
+                            <i className="fa fa-shopping-cart mr-2"></i>
+                            Add to Cart
                           </>
                         )}
               </button>
@@ -1106,7 +1223,8 @@ export default function SummaryPage() {
                           </>
                         ) : (
                           <>
-                            💳 Checkout
+                            <i className="fa fa-credit-card mr-2"></i>
+                            Checkout
                           </>
                         )}
                       </button>
@@ -1124,8 +1242,9 @@ export default function SummaryPage() {
                         </svg>
                       </div>
                       <div className="flex-1">
-                        <h4 className="text-sm font-bold" style={{ color: '#166534' }}>
-                          ✅ {isEditMode ? 'Cart Updated Successfully!' : 'Added to Cart Successfully!'}
+                        <h4 className="text-sm font-bold flex items-center gap-2" style={{ color: '#166534' }}>
+                          <i className="fa fa-check-circle"></i>
+                          {isEditMode ? 'Cart Updated Successfully!' : 'Added to Cart Successfully!'}
                         </h4>
                       </div>
                     </div>

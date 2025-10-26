@@ -18,6 +18,8 @@ export const createSubscription = async (req, res) => {
       couponCode,
       specialInstructions,
       autoRenewal,
+      maxSkipDays,
+      maxExtendedDays,
     } = req.body;
 
     // Validate product
@@ -26,6 +28,29 @@ export const createSubscription = async (req, res) => {
       return res.status(404).json({
         success: false,
         error: 'Product not found or not available',
+      });
+    }
+
+    // Check cutoff time (3:30 AM IST) for same-day subscriptions
+    const now = new Date();
+    
+    // Convert to IST (UTC+5:30)
+    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const istToday = new Date(istTime);
+    istToday.setHours(0, 0, 0, 0);
+    
+    const requestedStartDate = new Date(startDate);
+    requestedStartDate.setHours(0, 0, 0, 0);
+
+    const currentHour = istTime.getHours();
+    const currentMinute = istTime.getMinutes();
+    const isAfterCutoff = currentHour > 3 || (currentHour === 3 && currentMinute >= 30);
+
+    // If AFTER 3:30 AM IST and trying to start today, reject
+    if (isAfterCutoff && requestedStartDate.getTime() === istToday.getTime()) {
+      return res.status(400).json({
+        success: false,
+        error: 'It\'s past 3:30 AM IST. Subscriptions for today are no longer available. Please select a start date from tomorrow onwards.',
       });
     }
 
@@ -69,7 +94,7 @@ export const createSubscription = async (req, res) => {
     const deliveryCount = duration;
 
     // Create subscription
-    const subscription = await Subscription.create({
+    const subscriptionData = {
       userId,
       productId,
       productName: product.name,
@@ -92,7 +117,17 @@ export const createSubscription = async (req, res) => {
       specialInstructions,
       autoRenewal: autoRenewal || false,
       deliveryCount,
-    });
+    };
+
+    // Only set maxSkipDays and maxExtendedDays if provided (otherwise let pre-save hook calculate)
+    if (maxSkipDays !== undefined && maxSkipDays !== null) {
+      subscriptionData.maxSkipDays = maxSkipDays;
+    }
+    if (maxExtendedDays !== undefined && maxExtendedDays !== null) {
+      subscriptionData.maxExtendedDays = maxExtendedDays;
+    }
+
+    const subscription = await Subscription.create(subscriptionData);
 
     res.status(201).json({
       success: true,
@@ -777,5 +812,33 @@ export const getTodaysDeliveries = async (req, res) => {
   }
 };
 
+// Delete subscription (Admin)
+export const deleteSubscription = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const subscription = await Subscription.findById(id);
+
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        error: 'Subscription not found',
+      });
+    }
+
+    await Subscription.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Subscription deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete subscription error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete subscription',
+    });
+  }
+};
 
 

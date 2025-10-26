@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
+import { FoodHeader } from '@/app/components/FoodHeader';
 
 const ADDONS = [
   { 
@@ -45,6 +46,15 @@ export default function AddonsPage() {
   const { state, updateState } = useSubscription();
   const isEditMode = searchParams?.get('editAddons') === 'true'; // Check if editing add-ons
   const [selectedAddons, setSelectedAddons] = useState<string[]>(state.addons || []);
+  const [user, setUser] = useState<any>(null);
+
+  // Load user on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
 
   const toggleAddon = (addonId: string) => {
     if (selectedAddons.includes(addonId)) {
@@ -87,15 +97,28 @@ export default function AddonsPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Header */}
+      <FoodHeader 
+        user={user}
+        showLocation={false}
+        showSearch={false}
+        showCart={false}
+        onLogout={() => {
+          localStorage.clear();
+          router.push('/auth');
+        }}
+        centerTitle="New Subscription"
+      />
+
       {/* Progress Bar */}
       <div style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
         <div className="max-w-4xl mx-auto px-6 md:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 5 of 9</span>
+            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 5 of 6</span>
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Add-ons</span>
           </div>
           <div className="w-full rounded-full overflow-hidden" style={{ background: '#E5E7EB', height: '6px' }}>
-            <div style={{ width: '55.5%', background: '#E11D48', height: '6px' }}></div>
+            <div style={{ width: '83.3%', background: '#E11D48', height: '6px' }}></div>
           </div>
         </div>
       </div>

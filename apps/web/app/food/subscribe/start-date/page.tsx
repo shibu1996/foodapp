@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
+import { FoodHeader } from '@/app/components/FoodHeader';
 
 export default function StartDatePage() {
   const router = useRouter();
@@ -10,13 +11,48 @@ export default function StartDatePage() {
   const { state, updateState } = useSubscription();
   const isEditMode = searchParams?.get('editSchedule') === 'true'; // Check if editing schedule
   const [selectedDate, setSelectedDate] = useState(state.startDate || '');
+  const [user, setUser] = useState<any>(null);
+
+  // Load user on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  // Check if current time is AFTER cutoff (3:30 AM IST)
+  const isAfterCutoffTime = () => {
+    // Get current time in IST (UTC+5:30)
+    const now = new Date();
+    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    
+    const cutoffHour = 3; // 3 AM IST
+    const cutoffMinute = 30; // 30 minutes
+    
+    const currentHour = istTime.getHours();
+    const currentMinute = istTime.getMinutes();
+    
+    // If current time >= 3:30 AM IST, return true (too late for today)
+    if (currentHour > cutoffHour) {
+      return true;
+    }
+    if (currentHour === cutoffHour && currentMinute >= cutoffMinute) {
+      return true;
+    }
+    return false;
+  };
 
   // Generate next 7 days
   const getAvailableDates = () => {
     const dates = [];
     const today = new Date();
     
-    for (let i = 1; i <= 7; i++) {
+    // If AFTER cutoff time (3:30 AM), start from tomorrow
+    // If BEFORE cutoff time, include today
+    const startDay = isAfterCutoffTime() ? 1 : 0;
+    
+    for (let i = startDay; i < startDay + 7; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() + i);
       dates.push(date);
@@ -72,15 +108,28 @@ export default function StartDatePage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F9FAFB' }}>
+      {/* Header */}
+      <FoodHeader 
+        user={user}
+        showLocation={false}
+        showSearch={false}
+        showCart={false}
+        onLogout={() => {
+          localStorage.clear();
+          router.push('/auth');
+        }}
+        centerTitle="New Subscription"
+      />
+
       {/* Progress Bar */}
       <div className="bg-white border-b" style={{ borderColor: '#E5E7EB' }}>
         <div className="max-w-3xl mx-auto px-6 md:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 2 of 9</span>
+            <span className="text-xs font-medium" style={{ color: '#6B7280' }}>Step 2 of 6</span>
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Start Date</span>
           </div>
           <div className="w-full rounded-full h-1.5" style={{ backgroundColor: '#E5E7EB' }}>
-            <div className="h-1.5 rounded-full" style={{ width: '22.2%', backgroundColor: '#E11D48' }}></div>
+            <div className="h-1.5 rounded-full" style={{ width: '33.3%', backgroundColor: '#E11D48' }}></div>
           </div>
         </div>
       </div>
@@ -103,6 +152,25 @@ export default function StartDatePage() {
             <p className="font-bold text-base mt-1" style={{ color: '#0E1214' }}>{state.duration} Days Subscription</p>
           </div>
         </div>
+
+        {/* Cutoff Time Warning */}
+        {isAfterCutoffTime() && (
+          <div className="bg-orange-50 border-l-4 border-orange-500 rounded-lg p-4 mb-6 flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <svg className="w-5 h-5" style={{ color: '#F97316' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-bold mb-1" style={{ color: '#C2410C' }}>
+                After Cutoff Time (3:30 AM IST)
+              </h4>
+              <p className="text-xs" style={{ color: '#9A3412' }}>
+                It's past 3:30 AM IST. Subscriptions for today are no longer available. Your subscription will start from tomorrow onwards.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Calendar - Date Selection */}
         <div className="bg-white rounded-xl p-5 mb-6 border" style={{ borderColor: '#E5E7EB' }}>
@@ -196,7 +264,7 @@ export default function StartDatePage() {
         <div className="flex gap-3">
           {!isEditMode && (
             <button
-              onClick={() => router.back()}
+              onClick={() => router.push('/food/subscribe/duration')}
               className="px-5 py-2.5 border-2 rounded-lg font-semibold text-sm transition-all"
               style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: '#FFFFFF' }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F9FAFB'}

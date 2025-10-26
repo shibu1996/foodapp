@@ -89,6 +89,45 @@ export default function SubscriptionCartPage() {
     }
   };
 
+  const handleDuplicate = (item: any) => {
+    try {
+      const localCart = localStorage.getItem('subscriptionCart');
+      if (localCart) {
+        const parsedCart = JSON.parse(localCart);
+        
+        // Create a duplicate with new ID
+        const duplicateItem = {
+          ...item,
+          _id: `duplicate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        };
+        
+        const updatedItems = [...parsedCart.items, duplicateItem];
+        const updatedCart = {
+          items: updatedItems,
+          totalAmount: updatedItems.reduce((sum: number, item: any) => sum + (item.totalAmount || 0), 0)
+        };
+        
+        localStorage.setItem('subscriptionCart', JSON.stringify(updatedCart));
+        setCart(updatedCart);
+        alert('Subscription duplicated successfully!');
+      }
+    } catch (error) {
+      alert('Failed to duplicate subscription');
+    }
+  };
+
+  const handleEdit = (item: any) => {
+    try {
+      // Save item data to localStorage for editing
+      localStorage.setItem('editingSubscription', JSON.stringify(item));
+      
+      // Navigate to summary page with edit mode
+      router.push(`/food/subscribe/summary?edit=true`);
+    } catch (error) {
+      alert('Failed to edit subscription');
+    }
+  };
+
   const handleCheckout = async () => {
     if (!cart || cart.items.length === 0) {
       alert('Cart is empty');
@@ -202,10 +241,25 @@ export default function SubscriptionCartPage() {
 
                 <div className="flex gap-2 mt-4">
                   <button
-                    onClick={() => handleRemove(item._id)}
-                    className="flex-1 bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium hover:bg-red-100 transition"
+                    onClick={() => handleEdit(item)}
+                    className="flex-1 bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-100 transition flex items-center justify-center gap-2"
                   >
-                    Remove
+                    <i className="fa fa-edit"></i>
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    onClick={() => handleDuplicate(item)}
+                    className="flex-1 bg-green-50 text-green-600 px-4 py-2 rounded-lg font-medium hover:bg-green-100 transition flex items-center justify-center gap-2"
+                  >
+                    <i className="fa fa-copy"></i>
+                    <span>Duplicate</span>
+                  </button>
+                  <button
+                    onClick={() => handleRemove(item._id)}
+                    className="flex-1 bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium hover:bg-red-100 transition flex items-center justify-center gap-2"
+                  >
+                    <i className="fa fa-trash"></i>
+                    <span>Remove</span>
                   </button>
                 </div>
               </div>

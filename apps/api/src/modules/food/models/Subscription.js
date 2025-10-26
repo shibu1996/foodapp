@@ -134,6 +134,10 @@ const SubscriptionSchema = new Schema(
       type: Number,
       default: 0,
     },
+    maxExtendedDays: {
+      type: Number,
+      default: 0,
+    },
     status: {
       type: String,
       enum: ['active', 'paused', 'cancelled', 'completed', 'expired'],
@@ -222,9 +226,9 @@ SubscriptionSchema.pre('save', async function (next) {
   next();
 });
 
-// Calculate max skip days based on duration
+// Calculate max skip days based on duration (only if not explicitly set)
 SubscriptionSchema.pre('save', function (next) {
-  if (this.isNew || this.isModified('duration')) {
+  if ((this.isNew || this.isModified('duration')) && !this.isModified('maxSkipDays')) {
     // Allow skip days based on duration
     if (this.duration === 7) {
       this.maxSkipDays = 2;

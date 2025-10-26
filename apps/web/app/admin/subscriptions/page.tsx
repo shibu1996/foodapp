@@ -41,6 +41,10 @@ export default function SubscriptionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   
+  // Delete modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingSubscription, setDeletingSubscription] = useState<Subscription | null>(null);
+  
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -166,6 +170,48 @@ export default function SubscriptionsPage() {
       'failed': { bg: '#FEE2E2', text: '#DC2626' }
     };
     return colors[status] || { bg: '#F3F4F6', text: '#6B7280' };
+  };
+
+  const handleDeleteClick = (subscription: Subscription) => {
+    setDeletingSubscription(subscription);
+    setShowDeleteModal(true);
+    setOpenDropdown(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingSubscription) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers: any = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/food/subscriptions/${deletingSubscription._id}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Remove from local state
+        setSubscriptions(prevSubs => prevSubs.filter(sub => sub._id !== deletingSubscription._id));
+        setShowDeleteModal(false);
+        setDeletingSubscription(null);
+        
+        // Show success toast
+        alert('Subscription deleted successfully!');
+      } else {
+        alert(data.error || 'Failed to delete subscription');
+      }
+    } catch (error) {
+      console.error('Error deleting subscription:', error);
+      alert('Failed to delete subscription');
+    }
   };
 
   // Filter subscriptions
@@ -630,6 +676,28 @@ export default function SubscriptionsPage() {
                     <i className="fa-solid fa-pen-to-square w-4"></i>
                     Manage
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const subscription = subscriptions.find(sub => sub._id === openDropdown);
+                      if (subscription) {
+                        handleDeleteClick(subscription);
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 text-left flex items-center gap-3 transition-all duration-200"
+                    style={{ color: '#0E1214', fontSize: '0.875rem' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#FEE2E2';
+                      e.currentTarget.style.color = '#DC2626';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#0E1214';
+                    }}
+                  >
+                    <i className="fa-solid fa-trash w-4"></i>
+                    Delete
+                  </button>
                 </div>
               </div>
             </>
@@ -649,6 +717,59 @@ export default function SubscriptionsPage() {
               <i className="fa-solid fa-filter"></i> Filters applied
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && deletingSubscription && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => setShowDeleteModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            style={{ fontFamily: 'Poppins, sans-serif' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#FEE2E2' }}>
+              <svg className="w-8 h-8" style={{ color: '#DC2626' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-center mb-2" style={{ color: '#0E1214' }}>
+              Delete Subscription?
+            </h3>
+            <p className="text-sm text-center mb-2" style={{ color: '#6B7280' }}>
+              Are you sure you want to delete subscription <strong>#{deletingSubscription.subscriptionNumber}</strong>?
+            </p>
+            <p className="text-sm text-center mb-6" style={{ color: '#DC2626' }}>
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeletingSubscription(null);
+                }}
+                className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all border"
+                style={{ backgroundColor: '#FFFFFF', color: '#6B7280', borderColor: '#E5E7EB' }}
+                onMouseEnter={(e: any) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                onMouseLeave={(e: any) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
+                style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+                onMouseEnter={(e: any) => e.currentTarget.style.backgroundColor = '#B91C1C'}
+                onMouseLeave={(e: any) => e.currentTarget.style.backgroundColor = '#DC2626'}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
