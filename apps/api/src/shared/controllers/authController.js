@@ -146,3 +146,49 @@ export const getCurrentUser = async (req, res) => {
   }
 };
 
+// Get all users (Admin)
+export const getAllUsers = async (req, res) => {
+  try {
+    const { limit = '50', page = '1', search = '' } = req.query;
+
+    const query = { isRegistered: true }; // Only get registered users
+
+    // Search by name, email, or phone
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(skip)
+      .select('_id name email phone isRegistered createdAt updatedAt');
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: users,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get users',
+      error: error.message 
+    });
+  }
+};
+

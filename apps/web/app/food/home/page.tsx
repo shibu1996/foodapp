@@ -313,7 +313,7 @@ export default function HomePage() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/categories`);
+        const response = await fetch(`${API_BASE_URL}/food/categories`);
         const data = await response.json();
         
         if (data.success) {
@@ -336,7 +336,7 @@ export default function HomePage() {
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/products`);
+        const response = await fetch(`${API_BASE_URL}/food/products`);
         const data = await response.json();
         
         if (data.success) {

@@ -1,5 +1,6 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import Subscription from '../models/Subscription.js';
 import { calculateOneTimeDeliveryFee, calculateSubscriptionDeliveryFee } from '../../../shared/utils/distanceCalculator.js';
 
 // Place new order (User)
@@ -109,18 +110,24 @@ export const placeOrder = async (req, res) => {
         });
       }
 
-      // Use subscription price if available
-      const price = product.subscriptionPrice || product.price;
-      const itemTotal = price * (item.quantity || 1);
+      // Use subscription price if available (daily price)
+      const dailyPrice = product.subscriptionPrice || product.price;
+      
+      // Calculate total subscription price based on duration
+      const duration = item.duration || 30;
+      const itemTotal = item.total || (dailyPrice * duration);
       subscriptionSubtotal += itemTotal;
 
       processedSubscriptionItems.push({
         productId: product._id,
-        productName: product.name,
-        price: price,
+        productName: item.productName || product.name,
+        price: dailyPrice,
         quantity: item.quantity || 1,
         total: itemTotal,
         isSubscription: true,
+        duration: duration,
+        startDate: item.startDate,
+        endDate: item.endDate,
       });
     }
 
@@ -178,10 +185,104 @@ export const placeOrder = async (req, res) => {
       specialInstructions,
     });
 
+    // Create Subscription documents for subscription items
+    console.log(`\n🔍 DEBUG: Processing ${subscriptionItems.length} subscription items`);
+    console.log('Subscription items data:', JSON.stringify(subscriptionItems, null, 2));
+    
+    const createdSubscriptions = [];
+    for (const subItem of subscriptionItems) {
+      try {
+        console.log(`\n📦 Processing subscription item for product: ${subItem.productId}`);
+        // Use dates from frontend, or calculate if not provided
+        const startDate = subItem.startDate ? new Date(subItem.startDate) : new Date();
+        const endDate = subItem.endDate ? new Date(subItem.endDate) : (() => {
+          const calculatedEndDate = new Date(startDate);
+          calculatedEndDate.setDate(calculatedEndDate.getDate() + (subItem.duration || 30));
+          return calculatedEndDate;
+        })();
+
+        // Calculate subscription pricing
+        const duration = subItem.duration || 30;
+        const basePrice = subItem.price || 0;
+        const subtotal = basePrice * duration;
+        const addonsTotal = subItem.addonPrice || 0;
+        const discount = subItem.discount || 0;
+        const totalAmount = subItem.total || (subtotal + addonsTotal - discount);
+
+        // Format skip dates (field name is skipDays in schema)
+        const formattedSkipDays = (subItem.skipDates || []).map(dateStr => ({
+          date: new Date(dateStr),
+          reason: 'User selected'
+        }));
+
+        // Calculate max skip days based on duration
+        let maxSkipDays = 0;
+        if (duration === 7) {
+          maxSkipDays = 2;
+        } else if (duration === 15) {
+          maxSkipDays = 3;
+        } else if (duration === 30) {
+          maxSkipDays = 5;
+        } else {
+          maxSkipDays = Math.floor(duration * 0.15); // 15% of duration
+        }
+
+        // Format addons - convert string array to object array
+        const formattedAddons = (subItem.addons || []).map(addon => {
+          if (typeof addon === 'string') {
+            // Convert string to object with name and price
+            const addonPrice = subItem.addonPrice || 0;
+            const pricePerAddon = (subItem.addons || []).length > 0 ? addonPrice / (subItem.addons || []).length : 0;
+            return {
+              name: addon,
+              price: pricePerAddon
+            };
+          }
+          return addon; // If already an object, return as is
+        });
+
+        const subscription = await Subscription.create({
+          userId,
+          productId: subItem.productId,
+          productName: subItem.productName || 'Subscription',
+          basePrice,
+          duration,
+          startDate,
+          endDate,
+          deliverySlot: subItem.deliverySlot || deliverySlot || '8:00 AM - 10:00 AM',
+          deliveryAddress: finalSubscriptionAddress,
+          addons: formattedAddons, // Use formatted addons with name and price
+          skipDays: formattedSkipDays, // Correct field name is skipDays
+          dailyMeals: subItem.dailyMeals || [],
+          maxSkipDays, // Maximum skip days allowed based on duration
+          subtotal,
+          addonsTotal,
+          discount,
+          totalAmount,
+          paidAmount: paymentMethod === 'cod' ? 0 : totalAmount,
+          status: 'active',
+          paymentMethod,
+          paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
+          deliveryCount: duration, // Total number of deliveries = duration
+          completedDeliveries: 0, // Initially no deliveries completed
+          orderId: order._id,
+        });
+        
+        createdSubscriptions.push(subscription);
+        console.log(`✅ Created subscription ${subscription.subscriptionNumber} for product ${subItem.productName}`);
+      } catch (subError) {
+        console.error(`❌ Failed to create subscription for product ${subItem.productId}:`, subError.message);
+        console.error('Subscription error details:', subError);
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Order placed successfully',
-      data: order,
+      data: {
+        order,
+        subscriptions: createdSubscriptions,
+      },
     });
   } catch (error) {
     console.error('Place order error:', error);
@@ -344,7 +445,7 @@ export const getAllOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip)
-      .populate('userId', 'name phoneNumber email')
+      .populate('userId', 'name phone email')
       .populate('items.productId', 'name image');
 
     const total = await Order.countDocuments(query);
@@ -361,6 +462,34 @@ export const getAllOrders = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get orders',
+    });
+  }
+};
+
+// Get single order by ID (Admin)
+export const getOrderByIdAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id)
+      .populate('userId', 'name phone email')
+      .populate('items.productId', 'name image price');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get order',
     });
   }
 };
@@ -418,6 +547,34 @@ export const updateOrderStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to update order status',
+    });
+  }
+};
+
+// Delete order (Admin)
+export const deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found',
+      });
+    }
+
+    await Order.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: 'Order deleted successfully',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete order',
     });
   }
 };

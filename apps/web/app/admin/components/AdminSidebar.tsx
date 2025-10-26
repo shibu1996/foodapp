@@ -63,7 +63,7 @@ interface NavItem {
 export default function AdminSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Products']);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Products', 'Subscriptions']);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Load collapsed state from localStorage
@@ -103,6 +103,10 @@ export default function AdminSidebar() {
       path: '/admin/subscriptions',
       icon: <SubscriptionsIcon />,
       badge: 5,
+      submenu: [
+        { name: 'All Subscriptions', path: '/admin/subscriptions' },
+        { name: 'Plans', path: '/admin/subscriptions/plans' },
+      ],
     },
   ];
 
@@ -133,25 +137,42 @@ export default function AdminSidebar() {
     <div
       className={`${
         isCollapsed ? 'w-20' : 'w-72'
-      } bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 border-r border-slate-700/50 h-screen flex flex-col transition-all duration-300 ease-in-out relative`}
+      } border-r h-screen flex flex-col transition-all duration-300 ease-in-out relative`}
+      style={{ 
+        backgroundColor: '#0E1214',
+        borderColor: '#1F2937',
+        fontFamily: 'Poppins, sans-serif'
+      }}
     >
-      {/* Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-orange-500/10 pointer-events-none" />
-
       {/* Header */}
-      <div className="relative p-6 border-b border-slate-700/50">
+      <div className="relative p-6 border-b" style={{ borderColor: '#1F2937' }}>
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex-1">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-purple-400 bg-clip-text text-transparent">
-                FoodApp Admin
+              <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: '#FFFFFF' }}>
+                <span>Food</span>
+                <span style={{ color: '#E11D48' }}>Admin</span>
               </h1>
-              <p className="text-xs text-slate-400 mt-1">Management Panel</p>
+              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Management Dashboard</p>
             </div>
           )}
           <button
             onClick={toggleSidebar}
-            className="p-2 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-white transition-all duration-200"
+            className="p-2 rounded-lg transition-all duration-200 border"
+            style={{ 
+              borderColor: '#374151', 
+              color: '#9CA3AF'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(225, 29, 72, 0.1)';
+              e.currentTarget.style.borderColor = '#E11D48';
+              e.currentTarget.style.color = '#E11D48';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.borderColor = '#374151';
+              e.currentTarget.style.color = '#9CA3AF';
+            }}
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             <MenuIcon />
@@ -161,14 +182,16 @@ export default function AdminSidebar() {
 
       {/* User Profile */}
       {!isCollapsed && (
-        <div className="relative p-6 border-b border-slate-700/50">
+        <div className="relative p-6 border-b" style={{ borderColor: '#1F2937' }}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm shadow-lg">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg"
+              style={{ backgroundColor: '#E11D48' }}
+            >
               AD
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-white">Admin User</p>
-              <p className="text-xs text-slate-400">admin@foodapp.com</p>
+              <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>Admin User</p>
+              <p className="text-xs" style={{ color: '#9CA3AF' }}>admin@foodapp.com</p>
             </div>
           </div>
         </div>
@@ -176,15 +199,22 @@ export default function AdminSidebar() {
 
       {/* Collapsed Profile */}
       {isCollapsed && (
-        <div className="relative p-4 border-b border-slate-700/50 flex justify-center">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm shadow-lg">
+        <div className="relative p-4 border-b flex justify-center" style={{ borderColor: '#1F2937' }}>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg"
+            style={{ backgroundColor: '#E11D48' }}
+          >
             AD
           </div>
         </div>
       )}
 
       {/* Navigation */}
-      <nav className="relative flex-1 overflow-y-auto p-4 space-y-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
+      <nav className="relative flex-1 overflow-y-auto p-4 space-y-1"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#374151 #0E1214'
+        }}
+      >
         {navItems.map((item) => {
           const active = isActive(item.path);
           const hasSubmenu = item.submenu && item.submenu.length > 0;
@@ -197,7 +227,6 @@ export default function AdminSidebar() {
                 onClick={() => {
                   if (hasSubmenu) {
                     if (isCollapsed) {
-                      // If collapsed, navigate to main path
                       router.push(item.path);
                     } else {
                       toggleMenu(item.name);
@@ -208,20 +237,35 @@ export default function AdminSidebar() {
                 }}
                 className={`w-full group relative flex items-center ${
                   isCollapsed ? 'justify-center' : 'justify-between'
-                } px-3 py-3 rounded-xl transition-all duration-200 ${
-                  active
-                    ? 'bg-gradient-to-r from-orange-500/20 to-purple-500/20 text-white shadow-lg shadow-orange-500/20'
-                    : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
-                }`}
+                } px-3 py-3 rounded-xl transition-all duration-200 border`}
+                style={{
+                  backgroundColor: active ? 'rgba(225, 29, 72, 0.1)' : 'transparent',
+                  borderColor: active ? '#E11D48' : 'transparent',
+                  color: active ? '#E11D48' : '#9CA3AF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    e.currentTarget.style.backgroundColor = 'rgba(55, 65, 81, 0.5)';
+                    e.currentTarget.style.color = '#FFFFFF';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#9CA3AF';
+                  }
+                }}
                 title={isCollapsed ? item.name : ''}
               >
                 {/* Active Indicator */}
                 {active && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-orange-400 to-purple-500 rounded-r-full" />
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
+                    style={{ backgroundColor: '#E11D48' }}
+                  />
                 )}
 
                 <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
-                  <div className={`${active ? 'text-orange-400' : ''} transition-colors`}>
+                  <div className="transition-colors">
                     {item.icon}
                   </div>
                   {!isCollapsed && (
@@ -232,7 +276,9 @@ export default function AdminSidebar() {
                 {!isCollapsed && (
                   <div className="flex items-center gap-2">
                     {item.badge && (
-                      <span className="px-2 py-0.5 text-xs font-semibold bg-orange-500 text-white rounded-full">
+                      <span className="px-2 py-0.5 text-xs font-semibold text-white rounded-full shadow-sm"
+                        style={{ backgroundColor: '#E11D48' }}
+                      >
                         {item.badge}
                       </span>
                     )}
@@ -247,16 +293,31 @@ export default function AdminSidebar() {
 
               {/* Submenu */}
               {hasSubmenu && !isCollapsed && isExpanded && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-slate-700/50 pl-4 animate-fadeIn">
+                <div className="ml-4 mt-1 space-y-1 border-l-2 pl-4 animate-fadeIn"
+                  style={{ borderColor: '#374151' }}
+                >
                   {item.submenu!.map((subItem) => (
                     <button
                       key={subItem.path}
                       onClick={() => router.push(subItem.path)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                        isActive(subItem.path)
-                          ? 'bg-slate-700/50 text-orange-400 font-medium'
-                          : 'text-slate-400 hover:bg-slate-700/30 hover:text-white'
-                      }`}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200"
+                      style={{
+                        backgroundColor: isActive(subItem.path) ? 'rgba(225, 29, 72, 0.1)' : 'transparent',
+                        color: isActive(subItem.path) ? '#E11D48' : '#9CA3AF',
+                        fontWeight: isActive(subItem.path) ? 600 : 400
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive(subItem.path)) {
+                          e.currentTarget.style.backgroundColor = 'rgba(55, 65, 81, 0.5)';
+                          e.currentTarget.style.color = '#FFFFFF';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive(subItem.path)) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = '#9CA3AF';
+                        }
+                      }}
                     >
                       {subItem.name}
                     </button>
@@ -269,12 +330,25 @@ export default function AdminSidebar() {
       </nav>
 
       {/* Logout */}
-      <div className="relative p-4 border-t border-slate-700/50">
+      <div className="relative p-4 border-t" style={{ borderColor: '#1F2937' }}>
         <button
           onClick={handleLogout}
           className={`w-full group flex items-center ${
             isCollapsed ? 'justify-center' : 'gap-3'
-          } px-3 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-xl transition-all duration-200 font-medium`}
+          } px-3 py-3 rounded-xl transition-all duration-200 font-medium border`}
+          style={{
+            backgroundColor: 'rgba(225, 29, 72, 0.1)',
+            borderColor: '#E11D48',
+            color: '#E11D48'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#E11D48';
+            e.currentTarget.style.color = '#FFFFFF';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(225, 29, 72, 0.1)';
+            e.currentTarget.style.color = '#E11D48';
+          }}
           title={isCollapsed ? 'Logout' : ''}
         >
           <LogoutIcon />

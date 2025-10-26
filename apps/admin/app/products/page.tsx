@@ -61,16 +61,19 @@ export default function ProductsListPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold" style={{ color: '#0E1214' }}>Products</h1>
+          <p className="mt-2" style={{ color: '#6B7280' }}>
             Manage your restaurant menu items
           </p>
         </div>
         <button
           onClick={() => router.push('/products/new')}
-          className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
+          className="px-6 py-3 text-white rounded-xl transition-all font-medium"
+          style={{ backgroundColor: '#E11D48' }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BE123C'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E11D48'}
         >
           + Add New Product
         </button>
@@ -78,59 +81,65 @@ export default function ProductsListPage() {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-600">{error}</p>
+        <div className="mb-6 p-4 rounded-xl border" style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }}>
+          <p style={{ color: '#E11D48' }}>{error}</p>
         </div>
       )}
 
       {/* Loading State */}
       {loading ? (
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading products...</p>
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center border" style={{ borderColor: '#E5E7EB' }}>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto" style={{ borderColor: '#E11D48' }}></div>
+          <p className="mt-4" style={{ color: '#6B7280' }}>Loading products...</p>
         </div>
       ) : products.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-          <p className="text-gray-600 mb-4">No products found</p>
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center border" style={{ borderColor: '#E5E7EB' }}>
+          <p className="mb-4" style={{ color: '#6B7280' }}>No products found</p>
           <button
             onClick={() => router.push('/products/new')}
-            className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
+            className="px-6 py-3 text-white rounded-xl transition-all font-medium"
+            style={{ backgroundColor: '#E11D48' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BE123C'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E11D48'}
           >
             Add Your First Product
           </button>
         </div>
       ) : (
         /* Products Table */
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              <thead style={{ backgroundColor: '#F9FAFB' }}>
+                <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
                     Product
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
                     Category
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
                     Type
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
                     Price
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody style={{ borderTop: '1px solid #E5E7EB' }}>
                 {products.map((product) => (
                   <tr
                     key={product._id}
-                    className="hover:bg-gray-50 transition-colors"
+                    className="transition-colors"
+                    style={{ borderBottom: '1px solid #F3F4F6' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F9FAFB'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -140,40 +149,40 @@ export default function ProductsListPage() {
                           className="w-12 h-12 rounded-lg object-cover"
                         />
                         <div>
-                          <div className="font-medium text-gray-900">
+                          <div className="font-medium" style={{ color: '#0E1214' }}>
                             {product.name}
                           </div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm" style={{ color: '#9CA3AF' }}>
                             {product.isVeg ? '🟢 Veg' : '🔴 Non-Veg'}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-gray-700">
+                      <span style={{ color: '#6B7280' }}>
                         {product.category?.name || 'N/A'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-gray-700 capitalize">
+                      <span className="capitalize" style={{ color: '#6B7280' }}>
                         {product.type ? product.type.replace('-', ' ') : 'N/A'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-gray-900 font-medium">
+                      <div className="font-medium" style={{ color: '#0E1214' }}>
                         {formatCurrency(product.price)}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs" style={{ color: '#9CA3AF' }}>
                         Sub: {formatCurrency(product.subscriptionPrice)}/day
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          product.isAvailable
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
+                        className="px-3 py-1 rounded-full text-xs font-medium"
+                        style={{
+                          backgroundColor: product.isAvailable ? '#DCFCE7' : '#F3F4F6',
+                          color: product.isAvailable ? '#16A34A' : '#6B7280'
+                        }}
                       >
                         {product.isAvailable ? 'Active' : 'Inactive'}
                       </span>
@@ -183,7 +192,10 @@ export default function ProductsListPage() {
                         onClick={() =>
                           router.push(`/products/${product._id}`)
                         }
-                        className="text-orange-600 hover:text-orange-700 font-medium text-sm"
+                        className="font-medium text-sm transition-colors"
+                        style={{ color: '#E11D48' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#BE123C'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#E11D48'}
                       >
                         View Details
                       </button>
@@ -198,12 +210,13 @@ export default function ProductsListPage() {
 
       {/* Products Count */}
       {!loading && products.length > 0 && (
-        <div className="mt-4 text-sm text-gray-600">
+        <div className="mt-4 text-sm" style={{ color: '#6B7280' }}>
           Showing {products.length} product{products.length !== 1 ? 's' : ''}
         </div>
       )}
     </div>
   );
 }
+
 
 

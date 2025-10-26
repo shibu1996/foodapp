@@ -14,16 +14,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <div className="flex h-screen bg-gray-50">
+      <body style={{ fontFamily: 'Poppins, sans-serif' }}>
+        <div className="flex h-screen" style={{ backgroundColor: '#F9FAFB' }}>
           <AdminSidebar />
           <div className="flex-1 overflow-auto">
-            <div className="p-8">{children}</div>
+            <div className="p-6 md:p-8">{children}</div>
           </div>
         </div>
       </body>
     </html>
   );
 }
+
 
 

@@ -68,7 +68,7 @@ export default function ProductDetailPage() {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/products/${productId}`);
+        const response = await fetch(`${API_BASE_URL}/food/products/${productId}`);
         const data = await response.json();
         
         if (data.success) {

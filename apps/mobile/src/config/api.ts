@@ -6,7 +6,7 @@
 // For iOS simulator, use localhost
 // For physical device, use your computer's IP address
 export const API_BASE_URL = __DEV__
-  ? 'http://10.0.2.2:5000'
+  ? 'http://192.168.1.4:5000'  // Physical device (your computer's IP)
   : 'https://api.restaurantapp.com';
 
 export const API_ENDPOINTS = {
@@ -38,5 +38,6 @@ export const API_ENDPOINTS = {
 };
 
 export const API_TIMEOUT = 30000; // 30 seconds
+
 
 

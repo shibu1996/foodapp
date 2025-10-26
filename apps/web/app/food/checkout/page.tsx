@@ -363,21 +363,49 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Separate one-time and subscription items
-      const oneTimeItems = cart.filter((item: any) => item.type !== 'subscription').map((item: any) => ({
-        productId: item.id || item.productId,
-        quantity: item.quantity
-      }));
+      // Debug: Log cart items
+      console.log('🛒 Cart items:', cart);
       
-      const subscriptionItems = cart.filter((item: any) => item.type === 'subscription').map((item: any) => ({
-        productId: item.productId,
-        quantity: 1,
-        duration: item.duration,
-        startDate: item.startDate,
-        deliverySlot: item.deliverySlot,
-        skipDates: item.skipDates || [],
-        addons: item.addons || []
-      }));
+      // Separate one-time and subscription items
+      const oneTimeItems = cart.filter((item: any) => item.type !== 'subscription').map((item: any) => {
+        const productId = item.id || item.productId || item._id;
+        console.log('📦 One-time item:', { name: item.name, productId, hasId: !!item.id, hasProductId: !!item.productId, has_id: !!item._id });
+        return {
+          productId,
+          quantity: item.quantity
+        };
+      });
+      
+      const subscriptionItems = cart.filter((item: any) => item.type === 'subscription').map((item: any) => {
+        console.log('📅 Subscription item:', { name: item.productName, productId: item.productId });
+        return {
+          productId: item.productId,
+          productName: item.productName,
+          price: item.basePrice || item.price,
+          quantity: 1,
+          duration: item.duration,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          deliverySlot: item.deliverySlot,
+          skipDates: item.skipDates || [],
+          skipEnabled: item.skipEnabled || false,
+          addons: item.addons || [],
+          addonPrice: item.addonPrice || 0,
+          dailyMeals: item.dailyMeals || [],
+          total: item.price || item.totalAmount
+        };
+      });
+
+      // Filter out items with undefined productId
+      const validOneTimeItems = oneTimeItems.filter(item => item.productId);
+      const validSubscriptionItems = subscriptionItems.filter(item => item.productId);
+
+      console.log(`✅ Valid items: ${validOneTimeItems.length} one-time, ${validSubscriptionItems.length} subscription`);
+
+      if (validOneTimeItems.length === 0 && validSubscriptionItems.length === 0) {
+        alert('No valid items in cart. Please add products again.');
+        return;
+      }
 
       // Get selected addresses
       const oneTimeAddress = addresses.find(a => a._id === (useSameAddress ? (oneTimeAddressId || selectedAddressId) : oneTimeAddressId));
@@ -385,12 +413,36 @@ export default function CheckoutPage() {
         ? oneTimeAddress 
         : addresses.find(a => a._id === subscriptionAddressId);
 
+      // Clean address objects (remove _id and other fields that aren't in schema)
+      const cleanAddress = (addr: any) => {
+        if (!addr) return null;
+        return {
+          houseNo: addr.houseNo,
+          street: addr.street,
+          area: addr.area,
+          city: addr.city,
+          state: addr.state,
+          pincode: addr.pincode,
+          landmark: addr.landmark || '',
+          latitude: addr.latitude || 0,
+          longitude: addr.longitude || 0
+        };
+      };
+
+      const cleanedOneTimeAddress = cleanAddress(oneTimeAddress);
+      const cleanedSubscriptionAddress = cleanAddress(subscriptionAddress);
+
+      console.log('📍 Cleaned addresses:', {
+        oneTime: cleanedOneTimeAddress,
+        subscription: cleanedSubscriptionAddress
+      });
+
       // Prepare order data
       const orderData = {
-        oneTimeItems,
-        subscriptionItems,
-        oneTimeDeliveryAddress: oneTimeAddress,
-        subscriptionDeliveryAddress: subscriptionAddress,
+        oneTimeItems: validOneTimeItems,
+        subscriptionItems: validSubscriptionItems,
+        oneTimeDeliveryAddress: cleanedOneTimeAddress,
+        subscriptionDeliveryAddress: cleanedSubscriptionAddress,
         useSameAddress,
         deliveryType,
         deliveryDistance,
@@ -401,6 +453,8 @@ export default function CheckoutPage() {
         specialInstructions: ''
       };
 
+      console.log('📤 Sending order data:', JSON.stringify(orderData, null, 2));
+
       const response = await fetch('http://localhost:5000/api/food/orders', {
         method: 'POST',
         headers: {
@@ -410,10 +464,21 @@ export default function CheckoutPage() {
         body: JSON.stringify(orderData)
       });
 
+      console.log('📥 Response status:', response.status);
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('❌ Non-JSON response:', text.substring(0, 500));
+        throw new Error('Server returned invalid response. Please check console.');
+      }
+
       const data = await response.json();
+      console.log('📦 Response data:', data);
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to place order');
+        throw new Error(data.error || data.message || 'Failed to place order');
       }
 
       // Clear cart

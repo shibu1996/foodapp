@@ -72,16 +72,16 @@ export default function DashboardPage() {
     <div>
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold" style={{ color: '#0E1214' }}>Dashboard</h1>
+        <p className="mt-2" style={{ color: '#6B7280' }}>
           Welcome back! Here's what's happening with your restaurant.
         </p>
       </div>
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-600">{error}</p>
+        <div className="mb-6 p-4 rounded-xl border" style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }}>
+          <p style={{ color: '#E11D48' }}>{error}</p>
         </div>
       )}
 
@@ -124,8 +124,8 @@ export default function DashboardPage() {
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Orders Breakdown */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-white rounded-xl shadow-sm p-6 border" style={{ borderColor: '#E5E7EB' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: '#0E1214' }}>
               Orders by Status
             </h3>
             <div className="space-y-3">
@@ -135,8 +135,8 @@ export default function DashboardPage() {
                     key={status}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-gray-600 capitalize">{status}</span>
-                    <span className="font-semibold text-gray-900">{count as number}</span>
+                    <span className="capitalize" style={{ color: '#6B7280' }}>{status}</span>
+                    <span className="font-semibold" style={{ color: '#0E1214' }}>{count as number}</span>
                   </div>
                 )
               )}
@@ -144,8 +144,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Subscriptions Breakdown */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-white rounded-xl shadow-sm p-6 border" style={{ borderColor: '#E5E7EB' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: '#0E1214' }}>
               Subscriptions by Status
             </h3>
             <div className="space-y-3">
@@ -155,8 +155,8 @@ export default function DashboardPage() {
                     key={status}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-gray-600 capitalize">{status}</span>
-                    <span className="font-semibold text-gray-900">{count as number}</span>
+                    <span className="capitalize" style={{ color: '#6B7280' }}>{status}</span>
+                    <span className="font-semibold" style={{ color: '#0E1214' }}>{count as number}</span>
                   </div>
                 )
               )}
@@ -170,7 +170,14 @@ export default function DashboardPage() {
         <button
           onClick={fetchStats}
           disabled={loading}
-          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
+          style={{ backgroundColor: '#E11D48' }}
+          onMouseEnter={(e: any) => {
+            if (!loading) e.currentTarget.style.backgroundColor = '#BE123C';
+          }}
+          onMouseLeave={(e: any) => {
+            if (!loading) e.currentTarget.style.backgroundColor = '#E11D48';
+          }}
         >
           {loading ? 'Refreshing...' : 'Refresh Data'}
         </button>

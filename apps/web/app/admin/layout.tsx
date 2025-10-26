@@ -44,9 +44,11 @@ export default function AdminLayout({
   }, [router]);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen" style={{ 
+      fontFamily: 'Poppins, sans-serif'
+    }}>
       <AdminSidebar />
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" style={{ backgroundColor: '#FFFFFF' }}>
         <div className="p-8">{children}</div>
       </div>
     </div>

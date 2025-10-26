@@ -4,6 +4,7 @@ import {
   verifyOTPController,
   completeRegistration,
   getCurrentUser,
+  getAllUsers,
 } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
 import { authLimiter, expensiveOperationLimiter } from '../middleware/rateLimit.js';
@@ -21,6 +22,9 @@ router.post('/complete-registration', authenticate, completeRegistration);
 
 // No extra rate limiting for getting current user (already has global limit)
 router.get('/me', authenticate, getCurrentUser);
+
+// Admin route for getting all users (auth temporarily disabled for development)
+router.get('/users', getAllUsers);
 
 export default router;
 

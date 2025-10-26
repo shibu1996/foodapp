@@ -11,6 +11,7 @@ import productRoutes from './modules/food/routes/productRoutes.js';
 import categoryRoutes from './modules/food/routes/categoryRoutes.js';
 import orderRoutes from './modules/food/routes/orderRoutes.js';
 import subscriptionRoutes from './modules/food/routes/subscriptionRoutes.js';
+import planRoutes from './modules/food/routes/planRoutes.js';
 
 dotenv.config();
 
@@ -49,10 +50,11 @@ import { apiLimiter } from './shared/middleware/rateLimit.js';
 app.use(apiLimiter);
 
 app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/food/products', productRoutes);
+app.use('/api/food/categories', categoryRoutes);
+app.use('/api/food/orders', orderRoutes);
+app.use('/api/food/subscriptions', subscriptionRoutes);
+app.use('/api/food/plans', planRoutes);
 
 // Basic health check
 app.get('/health', (req, res) => {

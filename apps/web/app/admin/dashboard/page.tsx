@@ -32,9 +32,9 @@ export default function DashboardPage() {
       }
 
       const [productsRes, ordersRes, subscriptionsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/products/admin/stats`, { headers }),
-        fetch(`${API_BASE_URL}/api/orders/admin/stats`, { headers }),
-        fetch(`${API_BASE_URL}/api/subscriptions/admin/stats`, { headers }),
+        fetch(`${API_BASE_URL}/api/food/products/admin/stats`, { headers }),
+        fetch(`${API_BASE_URL}/api/food/orders/admin/stats`, { headers }),
+        fetch(`${API_BASE_URL}/api/food/subscriptions/admin/stats`, { headers }),
       ]);
 
       if (!productsRes.ok || !ordersRes.ok || !subscriptionsRes.ok) {
@@ -69,19 +69,19 @@ export default function DashboardPage() {
   };
 
   return (
-    <div>
+    <div style={{ fontFamily: 'Poppins, sans-serif' }}>
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="font-bold" style={{ color: '#0E1214', fontSize: '1.875rem' }}>Dashboard</h1>
+        <p className="mt-2" style={{ color: '#6B7280', fontSize: '0.875rem' }}>
           Welcome back! Here's what's happening with your restaurant.
         </p>
       </div>
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-600">{error}</p>
+        <div className="mb-6 p-4 rounded-xl border" style={{ backgroundColor: '#FEF2F2', borderColor: '#E11D48' }}>
+          <p style={{ color: '#E11D48', fontSize: '0.875rem' }}>{error}</p>
         </div>
       )}
 
@@ -90,21 +90,21 @@ export default function DashboardPage() {
         <StatsCard
           title="Total Products"
           value={stats?.products.total || 0}
-          icon="📦"
+          icon="fa-solid fa-box"
           loading={loading}
           subtitle={`${stats?.products.active || 0} active`}
         />
         <StatsCard
           title="Total Orders"
           value={stats?.orders.total || 0}
-          icon="🛒"
+          icon="fa-solid fa-shopping-cart"
           loading={loading}
           subtitle="All time orders"
         />
         <StatsCard
           title="Subscriptions"
           value={stats?.subscriptions.total || 0}
-          icon="📅"
+          icon="fa-solid fa-calendar-check"
           loading={loading}
           subtitle={`${stats?.subscriptions.byStatus?.active || 0} active`}
         />
@@ -114,7 +114,7 @@ export default function DashboardPage() {
             (stats?.orders.totalRevenue || 0) +
               (stats?.subscriptions.totalRevenue || 0)
           )}
-          icon="💰"
+          icon="fa-solid fa-indian-rupee-sign"
           loading={loading}
           subtitle="Orders + Subscriptions"
         />
@@ -124,8 +124,11 @@ export default function DashboardPage() {
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Orders Breakdown */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="rounded-xl shadow-sm p-6 border" style={{ 
+            backgroundColor: '#FFFFFF',
+            borderColor: '#E5E7EB'
+          }}>
+            <h3 className="font-semibold mb-4" style={{ color: '#0E1214', fontSize: '1rem' }}>
               Orders by Status
             </h3>
             <div className="space-y-3">
@@ -135,8 +138,8 @@ export default function DashboardPage() {
                     key={status}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-gray-600 capitalize">{status}</span>
-                    <span className="font-semibold text-gray-900">{count as number}</span>
+                    <span className="capitalize" style={{ color: '#6B7280', fontSize: '0.875rem' }}>{status}</span>
+                    <span className="font-semibold" style={{ color: '#E11D48', fontSize: '0.875rem' }}>{count as number}</span>
                   </div>
                 )
               )}
@@ -144,8 +147,11 @@ export default function DashboardPage() {
           </div>
 
           {/* Subscriptions Breakdown */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="rounded-xl shadow-sm p-6 border" style={{ 
+            backgroundColor: '#FFFFFF',
+            borderColor: '#E5E7EB'
+          }}>
+            <h3 className="font-semibold mb-4" style={{ color: '#0E1214', fontSize: '1rem' }}>
               Subscriptions by Status
             </h3>
             <div className="space-y-3">
@@ -155,8 +161,8 @@ export default function DashboardPage() {
                     key={status}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-gray-600 capitalize">{status}</span>
-                    <span className="font-semibold text-gray-900">{count as number}</span>
+                    <span className="capitalize" style={{ color: '#6B7280', fontSize: '0.875rem' }}>{status}</span>
+                    <span className="font-semibold" style={{ color: '#E11D48', fontSize: '0.875rem' }}>{count as number}</span>
                   </div>
                 )
               )}
@@ -170,7 +176,17 @@ export default function DashboardPage() {
         <button
           onClick={fetchStats}
           disabled={loading}
-          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-6 py-3 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
+          style={{ 
+            backgroundColor: '#E11D48',
+            fontSize: '0.875rem'
+          }}
+          onMouseEnter={(e: any) => {
+            if (!loading) e.currentTarget.style.backgroundColor = '#BE123C';
+          }}
+          onMouseLeave={(e: any) => {
+            if (!loading) e.currentTarget.style.backgroundColor = '#E11D48';
+          }}
         >
           {loading ? 'Refreshing...' : 'Refresh Data'}
         </button>

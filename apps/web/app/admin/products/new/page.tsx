@@ -7,13 +7,6 @@ import Toast from '../../components/Toast';
 
 const API_BASE_URL = 'http://localhost:5000';
 
-// Arrow Back Icon
-const ArrowBackIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-  </svg>
-);
-
 export default function NewProductPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -50,7 +43,7 @@ export default function NewProductPage() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/products`, {
+      const response = await fetch(`${API_BASE_URL}/api/food/products`, {
         method: 'POST',
         headers,
         body: JSON.stringify(productData),
@@ -86,67 +79,88 @@ export default function NewProductPage() {
         />
       )}
 
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-        {/* Modern Header with Gradient */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700/50 relative overflow-hidden">
-          {/* Gradient Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 via-transparent to-purple-500/10" />
-          
-          <div className="relative max-w-7xl mx-auto px-8 py-8">
-            {/* Breadcrumb */}
-            <nav className="flex items-center gap-2 text-sm mb-4">
-              <button
-                onClick={() => router.push('/admin/dashboard')}
-                className="text-slate-400 hover:text-white transition-colors"
-              >
-                Dashboard
-              </button>
-              <span className="text-slate-600">/</span>
-              <button
-                onClick={() => router.push('/admin/products')}
-                className="text-slate-400 hover:text-white transition-colors"
-              >
-                Products
-              </button>
-              <span className="text-slate-600">/</span>
-              <span className="text-white font-medium">Add New</span>
-            </nav>
+      <div style={{ fontFamily: 'Poppins, sans-serif' }}>
+        {/* Header */}
+        <div className="mb-6">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-2 mb-4">
+            <button
+              onClick={() => router.push('/admin/dashboard')}
+              className="transition-colors"
+              style={{ color: '#6B7280', fontSize: '0.875rem' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#E11D48';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#6B7280';
+              }}
+            >
+              Dashboard
+            </button>
+            <span style={{ color: '#D1D5DB', fontSize: '0.875rem' }}>/</span>
+            <button
+              onClick={() => router.push('/admin/products')}
+              className="transition-colors"
+              style={{ color: '#6B7280', fontSize: '0.875rem' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#E11D48';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#6B7280';
+              }}
+            >
+              Products
+            </button>
+            <span style={{ color: '#D1D5DB', fontSize: '0.875rem' }}>/</span>
+            <span className="font-medium" style={{ color: '#E11D48', fontSize: '0.875rem' }}>Add New</span>
+          </nav>
 
-            {/* Header Content */}
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-4">
-                {/* Back Button */}
-                <button
-                  onClick={() => router.back()}
-                  className="mt-1 p-2 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white transition-all"
-                  title="Go back"
-                >
-                  <ArrowBackIcon />
-                </button>
+          {/* Header Content */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-4">
+              {/* Back Button */}
+              <button
+                onClick={() => router.back()}
+                className="mt-1 p-2 rounded-lg transition-all"
+                style={{ 
+                  color: '#6B7280',
+                  backgroundColor: 'transparent'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#F3F4F6';
+                  e.currentTarget.style.color = '#E11D48';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#6B7280';
+                }}
+                title="Go back"
+              >
+                <i className="fa-solid fa-arrow-left" style={{ fontSize: '1.25rem' }}></i>
+              </button>
 
-                {/* Title Section */}
-                <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                    Add New Product
-                  </h1>
-                  <p className="text-slate-400 text-sm">
-                    Create a new product for your restaurant menu
-                  </p>
-                </div>
+              {/* Title Section */}
+              <div>
+                <h1 className="font-bold mb-2" style={{ color: '#0E1214', fontSize: '1.875rem' }}>
+                  Add New Product
+                </h1>
+                <p style={{ color: '#6B7280', fontSize: '0.875rem' }}>
+                  Create a new product for your restaurant menu
+                </p>
               </div>
+            </div>
 
-              {/* Icon */}
-              <div className="hidden md:block">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-purple-500 flex items-center justify-center text-3xl shadow-xl shadow-orange-500/20">
-                  🍽️
-                </div>
+            {/* Icon */}
+            <div className="hidden md:block">
+              <div className="w-16 h-16 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-utensils" style={{ color: '#E11D48', fontSize: '2rem' }}></i>
               </div>
             </div>
           </div>
         </div>
 
         {/* Form Content */}
-        <div className="max-w-5xl mx-auto px-8 py-8">
+        <div>
           <ProductForm onSubmit={handleSubmit} loading={loading} />
         </div>
       </div>

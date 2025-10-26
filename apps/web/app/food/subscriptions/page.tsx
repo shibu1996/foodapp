@@ -127,16 +127,123 @@ export default function MySubscriptionsPage() {
 
   const fetchSubscriptions = async () => {
     try {
-      // For now, always show sample subscriptions for testing
-      setSampleSubscriptions();
-      setLoading(false);
-      return;
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        console.log('No token found, user not logged in');
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/my-subscriptions`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch subscriptions');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.data && data.data.length > 0) {
+        // Transform API data to match frontend interface
+        const transformedData = data.data.map((sub: any) => ({
+          ...sub,
+          productImage: sub.productId?.image || undefined,
+          type: sub.productName?.toLowerCase().includes('meal') ? 'meal-plan' : 'regular',
+          // Generate delivery progress from actual dates
+          deliveryProgress: generateProgressFromSubscription(sub),
+          // Daily menu for meal-plan types
+          dailyMenu: sub.type === 'meal-plan' ? generateDailyMenu(sub) : undefined,
+          // Available add-ons (static for now)
+          availableAddons: [
+            { name: 'Extra Rice', price: 20 },
+            { name: 'Papad', price: 15 },
+            { name: 'Raita', price: 30 },
+            { name: 'Sweet Dish', price: 50 },
+            { name: 'Salad', price: 25 }
+          ],
+          slotChangeDeadline: '3:30 AM',
+          paidAddons: sub.paidAddons || []
+        }));
+        
+        setSubscriptions(transformedData);
+      } else {
+        // If no subscriptions from API, show sample data for testing
+        console.log('No subscriptions found from API, showing sample data');
+        setSampleSubscriptions();
+      }
     } catch (error) {
       console.error('Error fetching subscriptions:', error);
+      // Show sample subscriptions on error for testing
       setSampleSubscriptions();
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to generate delivery progress from subscription data
+  const generateProgressFromSubscription = (sub: any) => {
+    const progress = [];
+    const startDate = new Date(sub.startDate);
+    const skipDays = sub.skipDays || [];
+    
+    for (let i = 0; i < sub.duration; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      
+      let status: 'pending' | 'completed' | 'skipped' = 'pending';
+      if (i < sub.completedDeliveries) {
+        status = 'completed';
+      }
+      if (skipDays.some((skip: any) => 
+        new Date(skip.date).toDateString() === date.toDateString()
+      )) {
+        status = 'skipped';
+      }
+      
+      progress.push({
+        date,
+        status,
+        meal: sub.productName?.toLowerCase().includes('meal') ? ['Dal Makhani', 'Jeera Rice', 'Roti', 'Salad'] : undefined,
+        addonsForDay: []
+      });
+    }
+    
+    return progress;
+  };
+
+  // Helper function to generate daily menu for meal-plan subscriptions
+  const generateDailyMenu = (sub: any) => {
+    const menu = [];
+    const startDate = new Date(sub.startDate);
+    const defaultMenus = [
+      ['Dal Makhani', 'Jeera Rice', 'Roti (2 pcs)', 'Salad'],
+      ['Rajma', 'Steamed Rice', 'Roti (3 pcs)', 'Raita'],
+      ['Chole', 'Jeera Rice', 'Roti (2 pcs)', 'Pickle'],
+      ['Paneer Curry', 'Pulao', 'Roti (2 pcs)', 'Salad'],
+      ['Mixed Veg', 'Plain Rice', 'Roti (3 pcs)', 'Curd'],
+      ['Kadhi Pakora', 'Jeera Rice', 'Roti (2 pcs)', 'Onion'],
+      ['Aloo Gobi', 'Steamed Rice', 'Roti (3 pcs)', 'Salad']
+    ];
+    
+    for (let i = 0; i < sub.duration; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      
+      menu.push({
+        date,
+        defaultItems: defaultMenus[i % defaultMenus.length],
+        selectedItems: sub.dailyMeals?.find((m: any) => 
+          new Date(m.date).toDateString() === date.toDateString()
+        )?.selectedItems || undefined
+      });
+    }
+    
+    return menu;
   };
 
   const setSampleSubscriptions = () => {
@@ -445,30 +552,47 @@ export default function MySubscriptionsPage() {
     }
   };
 
-  const handleSaveMeal = () => {
+  const handleSaveMeal = async () => {
     if (!selectedSubscription) return;
     
     if (selectedMealItems.length !== maxMealItems) {
       showToastMessage(`Please select exactly ${maxMealItems} items`, 'warning');
       return;
     }
-    
-    const updated = subscriptions.map(sub => 
-      sub._id === selectedSubscription._id && sub.dailyMenu
-        ? {
-            ...sub,
-            dailyMenu: [{
-              ...sub.dailyMenu[0],
-              selectedItems: selectedMealItems
-            }]
-          }
-        : sub
-    );
-    
-    setSubscriptions(updated);
-    setSelectedSubscription(updated.find(s => s._id === selectedSubscription._id) || null);
-    setShowMealModal(false);
-    showToastMessage('Meal selection updated for tomorrow!', 'success');
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showToastMessage('Please login first', 'error');
+        return;
+      }
+
+      // Call backend API to update meal selection
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/${selectedSubscription._id}/modify`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          mealSelection: selectedMealItems // Backend needs to support this field
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update meal selection');
+      }
+
+      // Refresh subscription data
+      await fetchSubscriptions();
+      setShowMealModal(false);
+      showToastMessage('Meal selection updated for tomorrow!', 'success');
+    } catch (error: any) {
+      console.error('Error updating meal:', error);
+      showToastMessage(error.message || 'Failed to update meal selection', 'error');
+    }
   };
 
   // Skip Day Modal
@@ -554,22 +678,46 @@ export default function MySubscriptionsPage() {
     setShowSlotModal(true);
   };
 
-  const handleSaveSlot = () => {
+  const handleSaveSlot = async () => {
     if (!selectedSubscription || !newSlot) return;
-    
-    const updated = subscriptions.map(sub => 
-      sub._id === selectedSubscription._id
-        ? { ...sub, deliverySlot: newSlot }
-        : sub
-    );
-    
-    setSubscriptions(updated);
-    setShowSlotModal(false);
-    
-    const message = slotChangeScope === 'tomorrow' 
-      ? 'Delivery slot updated for tomorrow!' 
-      : 'Delivery slot updated for all remaining days!';
-    showToastMessage(message, 'success');
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showToastMessage('Please login first', 'error');
+        return;
+      }
+
+      // Call backend API to update delivery slot
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/${selectedSubscription._id}/modify`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          deliverySlot: newSlot
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update delivery slot');
+      }
+
+      // Refresh subscription data
+      await fetchSubscriptions();
+      setShowSlotModal(false);
+      
+      const message = slotChangeScope === 'tomorrow' 
+        ? 'Delivery slot updated for tomorrow!' 
+        : 'Delivery slot updated for all remaining days!';
+      showToastMessage(message, 'success');
+    } catch (error: any) {
+      console.error('Error updating slot:', error);
+      showToastMessage(error.message || 'Failed to update delivery slot', 'error');
+    }
   };
 
   // Addons Modal
@@ -605,7 +753,7 @@ export default function MySubscriptionsPage() {
     return total;
   };
 
-  const handlePayAddons = () => {
+  const handlePayAddons = async () => {
     if (!selectedSubscription) return;
     
     const total = calculateAddonTotal();
@@ -613,36 +761,51 @@ export default function MySubscriptionsPage() {
       showToastMessage('Please select at least one add-on', 'warning');
       return;
     }
-    
-    // Create paid addons array
-    const newPaidAddons = Object.entries(selectedAddons).flatMap(([name, qty]) => {
-      const addon = selectedSubscription.availableAddons?.find(a => a.name === name);
-      if (!addon) return [];
-      
-      return Array.from({ length: qty }, () => ({
-        name: addon.name,
-        price: addon.price,
-        days: addonDays,
-        paidAt: new Date()
-      }));
-    });
-    
-    // Update subscription with paid addons
-    const updated = subscriptions.map(sub => 
-      sub._id === selectedSubscription._id
-        ? { 
-            ...sub, 
-            paidAddons: [...(sub.paidAddons || []), ...newPaidAddons]
-          }
-        : sub
-    );
-    
-    setSubscriptions(updated);
-    setSelectedSubscription(updated.find(s => s._id === selectedSubscription._id) || null);
-    
-    // Simulate payment
-    showToastMessage(`Payment of ₹${total} successful! Add-ons will be added to your next ${addonDays} ${addonDays === 1 ? 'delivery' : 'deliveries'}.`, 'success');
-    setShowAddonsModal(false);
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showToastMessage('Please login first', 'error');
+        return;
+      }
+
+      // Create addons array for backend
+      const addonsToAdd = Object.entries(selectedAddons).flatMap(([name, qty]) => {
+        const addon = selectedSubscription.availableAddons?.find(a => a.name === name);
+        if (!addon) return [];
+        
+        return Array.from({ length: qty }, () => ({
+          name: addon.name,
+          price: addon.price
+        }));
+      });
+
+      // Call backend API to add addons
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/${selectedSubscription._id}/modify`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          addons: [...(selectedSubscription.addons || []), ...addonsToAdd]
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to add add-ons');
+      }
+
+      // Refresh subscription data
+      await fetchSubscriptions();
+      setShowAddonsModal(false);
+      showToastMessage(`Payment of ₹${total} successful! Add-ons will be added to your next ${addonDays} ${addonDays === 1 ? 'delivery' : 'deliveries'}.`, 'success');
+    } catch (error: any) {
+      console.error('Error adding addons:', error);
+      showToastMessage(error.message || 'Failed to add add-ons', 'error');
+    }
   };
 
   // Full Calendar Modal
@@ -651,40 +814,83 @@ export default function MySubscriptionsPage() {
     setShowCalendarModal(true);
   };
 
-  // Undo Skip
-  const handleUndoSkip = (dateToUndo: Date) => {
+  // Skip Day - Call Backend API
+  const handleSkipDayAPI = async (date: Date) => {
     if (!selectedSubscription) return;
     
-    // Shrink end date by 1 day
-    const newEndDate = new Date(selectedSubscription.endDate);
-    newEndDate.setDate(newEndDate.getDate() - 1);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showToastMessage('Please login first', 'error');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/${selectedSubscription._id}/skip-day`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          date: date.toISOString(),
+          reason: 'User requested'
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to skip day');
+      }
+
+      // Refresh subscription data
+      await fetchSubscriptions();
+      showToastMessage('Day skipped successfully! Your subscription has been extended by 1 day.', 'success');
+    } catch (error: any) {
+      console.error('Error skipping day:', error);
+      showToastMessage(error.message || 'Failed to skip day', 'error');
+    }
+  };
+
+  // Undo Skip - Call Backend API
+  const handleUndoSkip = async (dateToUndo: Date) => {
+    if (!selectedSubscription) return;
     
-    const updated = subscriptions.map(sub => 
-      sub._id === selectedSubscription._id
-        ? {
-            ...sub,
-            skipDays: sub.skipDays.filter(skip => 
-              skip.date.toDateString() !== dateToUndo.toDateString()
-            ),
-            endDate: newEndDate,
-            deliveryProgress: sub.deliveryProgress
-              .slice(0, -1) // Remove last extended day
-              .map(p => 
-                p.date.toDateString() === dateToUndo.toDateString()
-                  ? { ...p, status: 'pending' as const }
-                  : p
-              )
-          }
-        : sub
-    );
-    
-    setSubscriptions(updated);
-    setSelectedSubscription(updated.find(s => s._id === selectedSubscription._id) || null);
-    showToastMessage('Skip cancelled! Delivery will resume for this day and subscription shortened by 1 day.', 'success');
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showToastMessage('Please login first', 'error');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/${selectedSubscription._id}/undo-skip`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          date: dateToUndo.toISOString()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to undo skip');
+      }
+
+      // Refresh subscription data
+      await fetchSubscriptions();
+      showToastMessage('Skip cancelled! Delivery will resume for this day and subscription shortened by 1 day.', 'success');
+    } catch (error: any) {
+      console.error('Error undoing skip:', error);
+      showToastMessage(error.message || 'Failed to undo skip', 'error');
+    }
   };
 
   // Toggle Skip from Calendar
-  const handleCalendarDateClick = (date: Date) => {
+  const handleCalendarDateClick = async (date: Date) => {
     if (!selectedSubscription) return;
     
     const delivery = selectedSubscription.deliveryProgress.find(
@@ -720,36 +926,8 @@ export default function MySubscriptionsPage() {
         return;
       }
       
-      // Extend end date by 1 day
-      const newEndDate = new Date(selectedSubscription.endDate);
-      newEndDate.setDate(newEndDate.getDate() + 1);
-      
-      // Add new extended day to delivery progress
-      const lastDate = selectedSubscription.deliveryProgress[selectedSubscription.deliveryProgress.length - 1].date;
-      const newExtendedDate = new Date(lastDate);
-      newExtendedDate.setDate(newExtendedDate.getDate() + 1);
-      
-      const updated = subscriptions.map(sub => 
-        sub._id === selectedSubscription._id
-          ? {
-              ...sub,
-              skipDays: [...sub.skipDays, { date, reason: 'User requested' }],
-              endDate: newEndDate,
-              deliveryProgress: [
-                ...sub.deliveryProgress.map(p => 
-                  p.date.toDateString() === date.toDateString()
-                    ? { ...p, status: 'skipped' as const }
-                    : p
-                ),
-                // Add new extended day
-                { date: newExtendedDate, status: 'pending' as const }
-              ]
-            }
-          : sub
-      );
-      
-      setSubscriptions(updated);
-      setSelectedSubscription(updated.find(s => s._id === selectedSubscription._id) || null);
+      // Call API to skip day
+      await handleSkipDayAPI(date);
     }
   };
 

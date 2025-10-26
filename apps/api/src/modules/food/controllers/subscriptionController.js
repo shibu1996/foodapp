@@ -401,6 +401,64 @@ export const skipDay = async (req, res) => {
   }
 };
 
+// Undo skip a day (User)
+export const undoSkipDay = async (req, res) => {
+  try {
+    const userId = (req).user._id;
+    const { id } = req.params;
+    const { date } = req.body;
+
+    const subscription = await Subscription.findOne({ _id: id, userId });
+
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        error: 'Subscription not found',
+      });
+    }
+
+    if (subscription.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        error: 'Can only undo skips for active subscriptions',
+      });
+    }
+
+    const undoDate = new Date(date);
+
+    // Check if this date is actually skipped
+    const skipIndex = subscription.skipDays.findIndex(
+      (skip) => skip.date.toDateString() === undoDate.toDateString()
+    );
+
+    if (skipIndex === -1) {
+      return res.status(400).json({
+        success: false,
+        error: 'This day is not marked as skipped',
+      });
+    }
+
+    // Remove from skipDays array
+    subscription.skipDays.splice(skipIndex, 1);
+
+    // Shrink end date by 1 day (reverse the extension)
+    subscription.endDate.setDate(subscription.endDate.getDate() - 1);
+
+    await subscription.save();
+
+    res.json({
+      success: true,
+      message: 'Skip cancelled successfully. Delivery will resume for this day.',
+      data: subscription,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to undo skip',
+    });
+  }
+};
+
 // Modify subscription (User)
 export const modifySubscription = async (req, res) => {
   try {
@@ -457,6 +515,37 @@ export const modifySubscription = async (req, res) => {
   }
 };
 
+// Get subscription by ID (Admin)
+export const getSubscriptionByIdAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const subscription = await Subscription.findById(id)
+      .populate('userId', 'name phone email')
+      .populate('productId', 'name image');
+
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        error: 'Subscription not found',
+      });
+    }
+
+    console.log(`\n📊 Admin: Fetching subscription ${id}`);
+
+    res.json({
+      success: true,
+      data: subscription,
+    });
+  } catch (error) {
+    console.error('Error fetching subscription:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get subscription',
+    });
+  }
+};
+
 // Get all subscriptions (Admin)
 export const getAllSubscriptions = async (req, res) => {
   try {
@@ -484,10 +573,13 @@ export const getAllSubscriptions = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip)
-      .populate('userId', 'name phoneNumber email')
+      .populate('userId', 'name phone email')
       .populate('productId', 'name image');
 
     const total = await Subscription.countDocuments(query);
+
+    console.log(`\n📊 Admin: Fetching subscriptions - Found ${subscriptions.length} of ${total} total`);
+    console.log('Query:', JSON.stringify(query, null, 2));
 
     res.json({
       success: true,

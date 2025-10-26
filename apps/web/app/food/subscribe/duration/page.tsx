@@ -4,18 +4,27 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSubscription } from '../context/SubscriptionContext';
 
-const PRESET_DURATIONS = [
-  { days: 7, label: '7 Days', badge: '' },
-  { days: 15, label: '15 Days', badge: 'Popular' },
-  { days: 30, label: '30 Days', badge: 'Best Value' },
-];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+interface Plan {
+  _id: string;
+  name: string;
+  duration: number;
+  maxSkipDays: number;
+  maxExtendedDays: number;
+  isActive: boolean;
+  description: string;
+}
 
 export default function DurationPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { state, updateState } = useSubscription();
   
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(true);
   const [selectedDuration, setSelectedDuration] = useState<number>(state.duration || 7);
+  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isCustom, setIsCustom] = useState(state.isCustomDuration || false);
   const [customDays, setCustomDays] = useState<string>('');
 
@@ -29,6 +38,33 @@ export default function DurationPage() {
 
   // Track if data has been loaded
   const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Fetch plans from API
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/food/plans/active/meal`);
+        const data = await response.json();
+        
+        if (data.success) {
+          const activePlans = data.data || [];
+          setPlans(activePlans);
+          
+          // Set selected plan based on current duration
+          const currentPlan = activePlans.find((p: Plan) => p.duration === selectedDuration);
+          if (currentPlan) {
+            setSelectedPlan(currentPlan);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching plans:', error);
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+
+    fetchPlans();
+  }, []);
 
   useEffect(() => {
     if (!searchParams) {
@@ -211,11 +247,16 @@ export default function DurationPage() {
       basePrice: currentPrice
     });
     
+    // Determine maxSkips from selected plan or calculate for custom duration
+    const maxSkips = isCustom 
+      ? getSkipAllowance(finalDuration) 
+      : selectedPlan?.maxSkipDays || getSkipAllowance(finalDuration);
+    
     // Update state with all necessary data (ensuring nothing is lost)
     updateState({
       duration: finalDuration,
       isCustomDuration: isCustom,
-      maxSkips: getSkipAllowance(finalDuration),
+      maxSkips: maxSkips,
       basePrice: currentPrice,
       // Use data from URL as primary source, state as fallback
       productId: productId,
@@ -278,51 +319,75 @@ export default function DurationPage() {
 
         {/* Duration Options */}
         <div className="space-y-3 mb-6">
-          {PRESET_DURATIONS.map((option) => {
-            const isSelected = selectedDuration === option.days && !isCustom;
-            return (
-            <button
-              key={option.days}
-              onClick={() => handleDurationSelect(option.days)}
-              className="w-full p-4 rounded-xl border-2 transition text-left"
-              style={{
-                borderColor: isSelected ? '#E11D48' : '#E5E7EB',
-                backgroundColor: isSelected ? '#FEF2F2' : '#FFFFFF'
-              }}
-              onMouseEnter={(e) => {
-                if (!isSelected) e.currentTarget.style.borderColor = '#FEE2E2';
-              }}
-              onMouseLeave={(e) => {
-                if (!isSelected) e.currentTarget.style.borderColor = '#E5E7EB';
-              }}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
-                      style={{
-                        borderColor: isSelected ? '#E11D48' : '#D1D5DB',
-                        backgroundColor: isSelected ? '#E11D48' : 'transparent'
-                      }}
-                    >
-                      {isSelected && (
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      )}
-                    </div>
-                    <h3 className="text-base font-bold" style={{ color: '#0E1214' }}>{option.label}</h3>
-                    {option.badge && (
+          {loadingPlans ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 mx-auto" style={{ 
+                border: '3px solid #FEF2F2',
+                borderTop: '3px solid #E11D48'
+              }}></div>
+              <p className="mt-4 text-sm" style={{ color: '#6B7280' }}>Loading plans...</p>
+            </div>
+          ) : plans.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm" style={{ color: '#6B7280' }}>No plans available</p>
+            </div>
+          ) : (
+            plans.map((plan) => {
+              const isSelected = selectedDuration === plan.duration && !isCustom;
+              // Determine badge based on plan
+              let badge = '';
+              if (plan.duration === 15) badge = 'Popular';
+              if (plan.duration === 30) badge = 'Best Value';
+              
+              return (
+              <button
+                key={plan._id}
+                onClick={() => {
+                  handleDurationSelect(plan.duration);
+                  setSelectedPlan(plan);
+                }}
+                className="w-full p-4 rounded-xl border-2 transition text-left"
+                style={{
+                  borderColor: isSelected ? '#E11D48' : '#E5E7EB',
+                  backgroundColor: isSelected ? '#FEF2F2' : '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.borderColor = '#FEE2E2';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.borderColor = '#E5E7EB';
+                }}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
+                        style={{
+                          borderColor: isSelected ? '#E11D48' : '#D1D5DB',
+                          backgroundColor: isSelected ? '#E11D48' : 'transparent'
+                        }}
+                      >
+                        {isSelected && (
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        )}
+                      </div>
+                      <h3 className="text-base font-bold" style={{ color: '#0E1214' }}>{plan.name}</h3>
+                      {badge && (
                       <span className="px-2 py-0.5 text-xs font-semibold rounded-full" style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}>
-                        {option.badge}
+                        {badge}
                       </span>
                     )}
                   </div>
                   
                   <div className="ml-7">
                     <p className="text-xs mb-1" style={{ color: '#6B7280' }}>
-                      ₹{currentPrice}/day × {option.days} days
+                      {plan.description}
+                    </p>
+                    <p className="text-xs mb-1" style={{ color: '#10B981' }}>
+                      ₹{currentPrice}/day × {plan.duration} days
                     </p>
                     <p className="text-xs mb-1" style={{ color: '#6B7280' }}>
-                      Skip allowance: {getSkipAllowance(option.days)} day(s)
+                      Skip allowance: {plan.maxSkipDays} day(s)
                     </p>
                   </div>
                 </div>
@@ -330,13 +395,14 @@ export default function DurationPage() {
                 <div className="text-right">
                   <p className="text-xs mb-1" style={{ color: '#6B7280' }}>Total Price</p>
                   <p className="text-lg font-bold" style={{ color: '#E11D48' }}>
-                    ₹{calculateTotal(option.days)}
+                    ₹{calculateTotal(plan.duration)}
                   </p>
                 </div>
               </div>
             </button>
           );
-          })}
+          })
+          )}
 
           {/* Custom Duration Option */}
           <button

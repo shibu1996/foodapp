@@ -14,6 +14,7 @@ interface Subscription {
   subscriptionNumber: string;
   productId: any;
   productName: string;
+  basePrice?: number;
   duration: number;
   startDate: Date;
   endDate: Date;
@@ -22,6 +23,9 @@ interface Subscription {
   skipDays: { date: Date; reason?: string }[];
   maxSkipDays: number;
   status: string;
+  subtotal?: number;
+  addonsTotal?: number;
+  discount?: number;
   totalAmount: number;
   paidAmount: number;
   pendingAmount: number;
@@ -65,35 +69,36 @@ export default function SubscriptionDetailsPage() {
 
   const fetchSubscriptionDetails = async () => {
     try {
-      // For now, use sample data
-      setSampleSubscription();
-      setLoading(false);
-      return;
-
-      // Uncomment when API is ready
-      /*
+      setLoading(true);
       const token = localStorage.getItem('token');
       if (!token) {
-        router.push('/auth');
+        console.log('No token found, redirecting to auth');
+        router.push('/auth?returnUrl=/food/subscriptions');
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/subscriptions/${params?.id}`, {
+      const response = await fetch(`${API_BASE_URL}/food/subscriptions/${params?.id}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to fetch subscription details');
+      }
+
       const data = await response.json();
 
-      if (data.success) {
+      if (data.success && data.data) {
         setSubscription(data.data);
       } else {
+        // If no data from API, show sample for testing
+        console.log('No subscription data from API, showing sample');
         setSampleSubscription();
       }
-      */
     } catch (error) {
       console.error('Error fetching subscription:', error);
+      // Show sample subscription on error for testing
       setSampleSubscription();
     } finally {
       setLoading(false);
@@ -470,49 +475,177 @@ export default function SubscriptionDetailsPage() {
 
             {/* Right Section - Payment & Summary */}
             <div className="lg:col-span-1 space-y-6">
-              {/* Payment Summary */}
+              {/* Detailed Payment Bill */}
               <div className="bg-white rounded-xl border p-6" style={{ borderColor: '#E5E7EB' }}>
-                <h2 className="text-base font-bold mb-4" style={{ color: '#0E1214' }}>Payment Summary</h2>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span style={{ color: '#6B7280' }}>Total Amount</span>
-                    <span className="font-bold" style={{ color: '#0E1214' }}>₹{subscription.totalAmount}</span>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-bold" style={{ color: '#0E1214' }}>Your Bill</h2>
+                  <svg className="w-5 h-5" style={{ color: '#E11D48' }} fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+                    <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                
+                {/* Itemized Breakdown */}
+                <div className="space-y-3 mb-4">
+                  <div className="text-xs font-semibold mb-2" style={{ color: '#6B7280' }}>ITEM DETAILS</div>
+                  
+                  {/* Base Product */}
+                  {subscription.basePrice && (
+                    <div className="p-3 rounded-lg" style={{ backgroundColor: '#F9FAFB' }}>
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex-1">
+                          <p className="text-xs font-bold" style={{ color: '#0E1214' }}>{subscription.productName}</p>
+                          <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
+                            ₹{subscription.basePrice} × {subscription.duration} days
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold" style={{ color: '#0E1214' }}>
+                          ₹{subscription.basePrice * subscription.duration}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add-ons */}
+                  {subscription.addons && subscription.addons.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold mt-3 mb-2" style={{ color: '#6B7280' }}>ADD-ONS</div>
+                      {subscription.addons.map((addon, index) => (
+                        <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                          <div className="flex justify-between items-start mb-1">
+                            <div className="flex-1">
+                              <p className="text-xs font-bold" style={{ color: '#0E1214' }}>{addon.name}</p>
+                              <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
+                                ₹{addon.price} × {subscription.duration} days
+                              </p>
+                            </div>
+                            <span className="text-sm font-bold" style={{ color: '#E11D48' }}>
+                              ₹{addon.price * subscription.duration}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Skip Days Info */}
+                  {subscription.skipDays && subscription.skipDays.length > 0 && (
+                    <div className="p-2 rounded-lg text-xs" style={{ backgroundColor: '#FFF7ED', color: '#92400E' }}>
+                      <svg className="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      {subscription.skipDays.length} day(s) skipped - Duration extended
+                    </div>
+                  )}
+                </div>
+
+                {/* Calculation Summary */}
+                {(subscription.subtotal || subscription.addonsTotal || subscription.discount) && (
+                  <div className="border-t pt-3 space-y-2 mb-3" style={{ borderColor: '#E5E7EB' }}>
+                    {subscription.subtotal && (
+                      <div className="flex justify-between text-sm">
+                        <span style={{ color: '#6B7280' }}>Subtotal</span>
+                        <span className="font-bold" style={{ color: '#0E1214' }}>₹{subscription.subtotal}</span>
+                      </div>
+                    )}
+                    
+                    {subscription.addonsTotal && subscription.addonsTotal > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span style={{ color: '#6B7280' }}>Add-ons Total</span>
+                        <span className="font-bold" style={{ color: '#0E1214' }}>₹{subscription.addonsTotal}</span>
+                      </div>
+                    )}
+
+                    {subscription.discount && subscription.discount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span style={{ color: '#059669' }}>Discount Applied</span>
+                        <span className="font-bold" style={{ color: '#059669' }}>-₹{subscription.discount}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-xs pt-1">
+                      <span style={{ color: '#9CA3AF' }}>Taxes & Charges</span>
+                      <span className="font-medium" style={{ color: '#9CA3AF' }}>Included</span>
+                    </div>
                   </div>
+                )}
+
+                {/* Total Amount */}
+                <div className="border-t border-b py-3 mb-3" style={{ borderColor: '#E5E7EB', backgroundColor: '#FEF2F2' }}>
+                  <div className="flex justify-between items-center px-2">
+                    <span className="font-bold" style={{ color: '#0E1214', fontSize: '0.875rem' }}>Grand Total</span>
+                    <span className="font-bold" style={{ color: '#E11D48', fontSize: '1.25rem' }}>
+                      ₹{subscription.totalAmount}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center px-2 mt-1">
+                    <span className="text-xs" style={{ color: '#6B7280' }}>Per Day Cost</span>
+                    <span className="text-xs font-bold" style={{ color: '#E11D48' }}>
+                      ₹{Math.round(subscription.totalAmount / subscription.duration)}/day
+                    </span>
+                  </div>
+                </div>
+
+                {/* Payment Status */}
+                <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span style={{ color: '#6B7280' }}>Paid Amount</span>
+                    <span style={{ color: '#6B7280' }}>
+                      <svg className="w-4 h-4 inline mr-1" style={{ color: '#059669' }} fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Paid Amount
+                    </span>
                     <span className="font-bold" style={{ color: '#059669' }}>₹{subscription.paidAmount}</span>
                   </div>
+                  
                   {subscription.pendingAmount > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span style={{ color: '#6B7280' }}>Pending Amount</span>
+                      <span style={{ color: '#6B7280' }}>
+                        <svg className="w-4 h-4 inline mr-1" style={{ color: '#D97706' }} fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                        </svg>
+                        Pending Amount
+                      </span>
                       <span className="font-bold" style={{ color: '#D97706' }}>₹{subscription.pendingAmount}</span>
                     </div>
                   )}
-                  <div className="border-t pt-3" style={{ borderColor: '#E5E7EB' }}>
-                    <div className="flex justify-between text-sm">
-                      <span style={{ color: '#6B7280' }}>Payment Method</span>
-                      <span className="font-bold" style={{ color: '#0E1214' }}>{subscription.paymentMethod}</span>
+
+                  {subscription.pendingAmount === 0 && subscription.paidAmount > 0 && (
+                    <div className="p-2 rounded-lg text-xs text-center font-medium" style={{ backgroundColor: '#D1FAE5', color: '#059669' }}>
+                      <svg className="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Fully Paid
                     </div>
-                    <div className="flex justify-between text-sm mt-2">
-                      <span style={{ color: '#6B7280' }}>Payment Status</span>
-                      <span 
-                        className="text-xs font-bold px-2 py-1 rounded"
-                        style={{ 
-                          backgroundColor: subscription.paymentStatus === 'paid' ? '#D1FAE5' : '#FEF3C7',
-                          color: subscription.paymentStatus === 'paid' ? '#059669' : '#D97706'
-                        }}
-                      >
-                        {subscription.paymentStatus.toUpperCase()}
-                      </span>
-                    </div>
+                  )}
+                </div>
+
+                {/* Payment Method */}
+                <div className="border-t pt-3 mt-3 space-y-2" style={{ borderColor: '#E5E7EB' }}>
+                  <div className="flex justify-between text-xs">
+                    <span style={{ color: '#6B7280' }}>Payment Method</span>
+                    <span className="font-bold uppercase px-2 py-1 rounded" style={{ 
+                      color: '#0E1214',
+                      backgroundColor: '#F3F4F6'
+                    }}>
+                      <svg className="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+                        <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
+                      </svg>
+                      {subscription.paymentMethod}
+                    </span>
                   </div>
-                  <div className="border-t pt-3" style={{ borderColor: '#E5E7EB' }}>
-                    <div className="flex justify-between text-xs">
-                      <span style={{ color: '#6B7280' }}>Per Day Cost</span>
-                      <span className="font-bold" style={{ color: '#E11D48' }}>
-                        ₹{Math.round(subscription.totalAmount / subscription.duration)}/day
-                      </span>
-                    </div>
+                  <div className="flex justify-between text-xs">
+                    <span style={{ color: '#6B7280' }}>Payment Status</span>
+                    <span 
+                      className="font-bold px-2 py-1 rounded uppercase text-xs"
+                      style={{ 
+                        backgroundColor: subscription.paymentStatus === 'paid' ? '#D1FAE5' : subscription.paymentStatus === 'pending' ? '#FEF3C7' : '#FEE2E2',
+                        color: subscription.paymentStatus === 'paid' ? '#059669' : subscription.paymentStatus === 'pending' ? '#D97706' : '#DC2626'
+                      }}
+                    >
+                      {subscription.paymentStatus}
+                    </span>
                   </div>
                 </div>
               </div>
