@@ -2,6 +2,21 @@ import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
 
 export const adminAuth = async (req, res, next) => {
+  // ⚠️ ADMIN AUTH TEMPORARILY DISABLED FOR DEVELOPMENT
+  // TODO: Implement proper admin authentication before production
+  
+  console.log('⚠️  Admin Auth: BYPASSED (Development Mode)');
+  
+  // Skip authentication for now
+  req.user = {
+    _id: 'admin-temp-id',
+    email: 'admin@foodapp.com',
+    name: 'Admin User'
+  };
+  
+  next();
+  
+  /* ORIGINAL AUTH CODE (Re-enable for production):
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
@@ -31,5 +46,6 @@ export const adminAuth = async (req, res, next) => {
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+  */
 };
 

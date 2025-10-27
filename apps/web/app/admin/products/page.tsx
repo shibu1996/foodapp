@@ -7,15 +7,14 @@ interface Product {
   _id: string;
   name: string;
   description: string;
-  category: {
-    _id: string;
-    name: string;
-  };
+  category: string | { _id: string; name: string };
   price: number;
   subscriptionPrice: number;
-  type: string;
+  originalPrice?: number;
+  discount?: number;
   isVeg: boolean;
   isAvailable: boolean;
+  isActive: boolean;
   image: string;
 }
 
@@ -28,11 +27,21 @@ export default function ProductsListPage() {
   const [error, setError] = useState('');
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   
+  // Delete modal
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; product: Product | null }>({
+    isOpen: false,
+    product: null
+  });
+  const [deleting, setDeleting] = useState(false);
+  
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all'); // all, one-time, subscription
   const [statusFilter, setStatusFilter] = useState('all'); // all, active, inactive
   const [vegFilter, setVegFilter] = useState('all'); // all, veg, non-veg
+  
+  // Delete all state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -57,6 +66,103 @@ export default function ProductsListPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteModal.product) return;
+
+    try {
+      setDeleting(true);
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/products/${deleteModal.product._id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete product');
+      }
+
+      // Remove product from list
+      setProducts(products.filter(p => p._id !== deleteModal.product!._id));
+      
+      // Close modal
+      setDeleteModal({ isOpen: false, product: null });
+    } catch (err: any) {
+      console.error('Error deleting product:', err);
+      alert(err.message || 'Failed to delete product');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleToggleStatus = async (product: Product) => {
+    try {
+      const token = localStorage.getItem('token');
+      const newStatus = product.isActive === false ? true : false;
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/products/${product._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        },
+        body: JSON.stringify({ isActive: newStatus })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update status');
+      }
+
+      // Update product in list
+      setProducts(products.map(p => 
+        p._id === product._id ? { ...p, isActive: newStatus } : p
+      ));
+    } catch (err: any) {
+      console.error('Error toggling status:', err);
+      alert(err.message || 'Failed to update status');
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      setDeletingAll(true);
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/products/admin/delete-all-products`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete all products');
+      }
+
+      // Clear products list
+      setProducts([]);
+      
+      // Close modal
+      setShowDeleteAllModal(false);
+      
+      // Show success message
+      alert(`Successfully deleted ${data.deletedCount} products!`);
+    } catch (err: any) {
+      console.error('Error deleting all products:', err);
+      alert(err.message || 'Failed to delete all products');
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -72,19 +178,14 @@ export default function ProductsListPage() {
       return false;
     }
 
-    // Type filter
-    if (typeFilter !== 'all') {
-      if (typeFilter === 'one-time' && product.type !== 'one-time') return false;
-      if (typeFilter === 'subscription' && product.type !== 'subscription') return false;
-    }
-
     // Status filter
     if (statusFilter !== 'all') {
       if (statusFilter === 'active' && !product.isAvailable) return false;
       if (statusFilter === 'inactive' && product.isAvailable) return false;
     }
 
-    // Veg filter
+    // Veg filter (Pure Veg Restaurant - all items are veg)
+    // This filter is kept for future flexibility
     if (vegFilter !== 'all') {
       if (vegFilter === 'veg' && !product.isVeg) return false;
       if (vegFilter === 'non-veg' && product.isVeg) return false;
@@ -103,20 +204,44 @@ export default function ProductsListPage() {
             Manage your restaurant menu items
           </p>
         </div>
-        <button
-          onClick={() => router.push('/admin/products/new')}
-          className="px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
-          style={{ backgroundColor: '#E11D48', fontSize: '0.875rem' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#BE123C';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#E11D48';
-          }}
-        >
-          <i className="fa-solid fa-plus"></i>
-          Add New Product
-        </button>
+        <div className="flex items-center gap-3">
+          {products.length > 0 && (
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              className="px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 border"
+              style={{ 
+                backgroundColor: 'transparent',
+                borderColor: '#DC2626',
+                color: '#DC2626',
+                fontSize: '0.875rem' 
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#FEE2E2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Delete all products"
+            >
+              <i className="fa-solid fa-trash-can"></i>
+              Delete All
+            </button>
+          )}
+          <button
+            onClick={() => router.push('/admin/products/new')}
+            className="px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+            style={{ backgroundColor: '#E11D48', fontSize: '0.875rem' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#BE123C';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#E11D48';
+            }}
+          >
+            <i className="fa-solid fa-plus"></i>
+            Add New Product
+          </button>
+        </div>
       </div>
 
       {/* Filters Section */}
@@ -147,45 +272,7 @@ export default function ProductsListPage() {
         </div>
 
         {/* Type Filter Tabs */}
-        <div className="mb-4">
-          <label className="block font-medium mb-2" style={{ color: '#6B7280', fontSize: '0.75rem' }}>Product Type</label>
-          <div className="flex gap-2">
-            {[
-              { value: 'all', label: 'All Products', icon: 'fa-border-all' },
-              { value: 'one-time', label: 'One-Time', icon: 'fa-shopping-bag' },
-              { value: 'subscription', label: 'Subscription', icon: 'fa-calendar-check' }
-            ].map((type) => (
-              <button
-                key={type.value}
-                onClick={() => setTypeFilter(type.value)}
-                className="px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 border"
-                style={{
-                  backgroundColor: typeFilter === type.value ? '#FEF2F2' : 'transparent',
-                  borderColor: typeFilter === type.value ? '#E11D48' : '#E5E7EB',
-                  color: typeFilter === type.value ? '#E11D48' : '#6B7280',
-                  fontSize: '0.875rem'
-                }}
-                onMouseEnter={(e) => {
-                  if (typeFilter !== type.value) {
-                    e.currentTarget.style.borderColor = '#E11D48';
-                    e.currentTarget.style.color = '#E11D48';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (typeFilter !== type.value) {
-                    e.currentTarget.style.borderColor = '#E5E7EB';
-                    e.currentTarget.style.color = '#6B7280';
-                  }
-                }}
-              >
-                <i className={`fa-solid ${type.icon}`}></i>
-                {type.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Additional Filters */}
+        {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Status Filter */}
           <div>
@@ -241,12 +328,11 @@ export default function ProductsListPage() {
         </div>
 
         {/* Clear Filters */}
-        {(searchQuery || typeFilter !== 'all' || statusFilter !== 'all' || vegFilter !== 'all') && (
+        {(searchQuery || statusFilter !== 'all' || vegFilter !== 'all') && (
           <div className="mt-4 pt-4 border-t" style={{ borderColor: '#E5E7EB' }}>
             <button
               onClick={() => {
                 setSearchQuery('');
-                setTypeFilter('all');
                 setStatusFilter('all');
                 setVegFilter('all');
               }}
@@ -351,9 +437,6 @@ export default function ProductsListPage() {
                     Category
                   </th>
                   <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider" style={{ color: '#6B7280', fontSize: '0.75rem' }}>
-                    Type
-                  </th>
-                  <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider" style={{ color: '#6B7280', fontSize: '0.75rem' }}>
                     Price
                   </th>
                   <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider" style={{ color: '#6B7280', fontSize: '0.75rem' }}>
@@ -403,12 +486,7 @@ export default function ProductsListPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span style={{ color: '#0E1214', fontSize: '0.875rem' }}>
-                        {product.category?.name || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="capitalize" style={{ color: '#0E1214', fontSize: '0.875rem' }}>
-                        {product.type ? product.type.replace('-', ' ') : 'N/A'}
+                        {typeof product.category === 'string' ? product.category : (product.category?.name || 'N/A')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -423,13 +501,13 @@ export default function ProductsListPage() {
                       <span
                         className="px-3 py-1.5 rounded-full font-medium inline-flex items-center gap-1.5"
                         style={{
-                          backgroundColor: product.isAvailable ? '#D1FAE5' : '#F3F4F6',
-                          color: product.isAvailable ? '#059669' : '#6B7280',
+                          backgroundColor: product.isActive !== false ? '#D1FAE5' : '#F3F4F6',
+                          color: product.isActive !== false ? '#059669' : '#6B7280',
                           fontSize: '0.75rem'
                         }}
                       >
-                        <i className={`fa-solid ${product.isAvailable ? 'fa-circle-check' : 'fa-circle-xmark'}`}></i>
-                        {product.isAvailable ? 'Active' : 'Inactive'}
+                        <i className={`fa-solid ${product.isActive !== false ? 'fa-circle-check' : 'fa-circle-xmark'}`}></i>
+                        {product.isActive !== false ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -507,14 +585,30 @@ export default function ProductsListPage() {
                                   <i className="fa-solid fa-pen-to-square w-4"></i>
                                   Edit Product
                                 </button>
+                                <button
+                                  onClick={() => {
+                                    setOpenDropdown(null);
+                                    handleToggleStatus(product);
+                                  }}
+                                  className="w-full px-4 py-2.5 text-left flex items-center gap-3 transition-all duration-200"
+                                  style={{ color: '#0E1214', fontSize: '0.875rem' }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = product.isAvailable ? '#FEF3C7' : '#D1FAE5';
+                                    e.currentTarget.style.color = product.isAvailable ? '#92400E' : '#065F46';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                    e.currentTarget.style.color = '#0E1214';
+                                  }}
+                                >
+                                  <i className={`fa-solid ${product.isActive !== false ? 'fa-eye-slash' : 'fa-eye'} w-4`}></i>
+                                  {product.isActive !== false ? 'Mark Inactive' : 'Mark Active'}
+                                </button>
                                 <div className="my-1 border-t" style={{ borderColor: '#E5E7EB' }}></div>
                                 <button
                                   onClick={() => {
                                     setOpenDropdown(null);
-                                    if (window.confirm(`Are you sure you want to delete "${product.name}"?`)) {
-                                      // TODO: Implement delete functionality
-                                      console.log('Delete product:', product._id);
-                                    }
+                                    setDeleteModal({ isOpen: true, product });
                                   }}
                                   className="w-full px-4 py-2.5 text-left flex items-center gap-3 transition-all duration-200"
                                   style={{ color: '#DC2626', fontSize: '0.875rem' }}
@@ -554,6 +648,212 @@ export default function ProductsListPage() {
               <i className="fa-solid fa-filter"></i> Filters applied
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && deleteModal.product && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 transition-opacity"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => !deleting && setDeleteModal({ isOpen: false, product: null })}
+          ></div>
+
+          {/* Modal */}
+          <div 
+            className="relative rounded-2xl shadow-2xl max-w-md w-full"
+            style={{ backgroundColor: '#FFFFFF' }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: '#FEE2E2' }}>
+                  <i className="fa-solid fa-trash-can text-xl" style={{ color: '#DC2626' }}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg" style={{ color: '#0E1214' }}>
+                    Delete Product
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                    This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-circle-exclamation mt-0.5" style={{ color: '#DC2626' }}></i>
+                <div>
+                  <p className="font-medium mb-1" style={{ color: '#0E1214', fontSize: '0.875rem' }}>
+                    Are you sure you want to delete?
+                  </p>
+                  <p className="font-bold mb-2" style={{ color: '#DC2626', fontSize: '0.9375rem' }}>
+                    "{deleteModal.product.name}"
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    This will permanently remove the product from your inventory and cannot be recovered.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB' }}>
+              <button
+                onClick={() => setDeleteModal({ isOpen: false, product: null })}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all"
+                style={{ 
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                  opacity: deleting ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: deleting ? '#9CA3AF' : '#DC2626',
+                  color: '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                {deleting ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can"></i>
+                    Delete Product
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 transition-opacity"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => !deletingAll && setShowDeleteAllModal(false)}
+          ></div>
+
+          {/* Modal */}
+          <div 
+            className="relative rounded-2xl shadow-2xl max-w-md w-full"
+            style={{ backgroundColor: '#FFFFFF' }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: '#FEE2E2' }}>
+                  <i className="fa-solid fa-triangle-exclamation text-xl" style={{ color: '#DC2626' }}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg" style={{ color: '#0E1214' }}>
+                    Delete All Products
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                    ⚠️ This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-circle-exclamation mt-0.5" style={{ color: '#DC2626' }}></i>
+                <div>
+                  <p className="font-bold mb-2" style={{ color: '#DC2626', fontSize: '0.9375rem' }}>
+                    WARNING: You are about to delete ALL products!
+                  </p>
+                  <p className="text-sm mb-2" style={{ color: '#0E1214' }}>
+                    This will permanently delete <strong>{products.length} products</strong> from the database.
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    This action is irreversible. All product data, images, and settings will be lost forever.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB' }}>
+              <button
+                onClick={() => setShowDeleteAllModal(false)}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all"
+                style={{ 
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                  opacity: deletingAll ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: deletingAll ? '#9CA3AF' : '#DC2626',
+                  color: '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                {deletingAll ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Deleting All...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can"></i>
+                    Yes, Delete All {products.length} Products
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

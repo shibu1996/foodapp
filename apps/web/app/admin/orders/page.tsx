@@ -41,6 +41,10 @@ export default function OrdersPage() {
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
   
+  // Delete all state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -108,6 +112,39 @@ export default function OrdersPage() {
       alert(err.message || 'Failed to delete order');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      setDeletingAll(true);
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/orders/admin/delete-all-orders`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete all orders');
+      }
+
+      // Clear orders list
+      setOrders([]);
+      
+      // Close modal
+      setShowDeleteAllModal(false);
+      
+      // Show success message
+      alert(`Successfully deleted ${data.deletedCount} orders!`);
+    } catch (err: any) {
+      console.error('Error deleting all orders:', err);
+      alert(err.message || 'Failed to delete all orders');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -188,6 +225,28 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {orders.length > 0 && (
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              className="px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 border"
+              style={{ 
+                backgroundColor: 'transparent',
+                borderColor: '#DC2626',
+                color: '#DC2626',
+                fontSize: '0.875rem' 
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#FEE2E2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Delete all orders"
+            >
+              <i className="fa-solid fa-trash-can"></i>
+              Delete All
+            </button>
+          )}
           <button
             onClick={fetchOrders}
             className="px-6 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 border"
@@ -741,6 +800,109 @@ export default function OrdersPage() {
                   <>
                     <i className="fa-solid fa-trash"></i>
                     Delete Order
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 transition-opacity"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => !deletingAll && setShowDeleteAllModal(false)}
+          ></div>
+
+          {/* Modal */}
+          <div 
+            className="relative rounded-2xl shadow-2xl max-w-md w-full"
+            style={{ backgroundColor: '#FFFFFF' }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: '#FEE2E2' }}>
+                  <i className="fa-solid fa-triangle-exclamation text-xl" style={{ color: '#DC2626' }}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg" style={{ color: '#0E1214' }}>
+                    Delete All Orders
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                    ⚠️ This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-circle-exclamation mt-0.5" style={{ color: '#DC2626' }}></i>
+                <div>
+                  <p className="font-bold mb-2" style={{ color: '#DC2626', fontSize: '0.9375rem' }}>
+                    WARNING: You are about to delete ALL orders!
+                  </p>
+                  <p className="text-sm mb-2" style={{ color: '#0E1214' }}>
+                    This will permanently delete <strong>{orders.length} orders</strong> from the database.
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    This action is irreversible. All data will be lost forever.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB' }}>
+              <button
+                onClick={() => setShowDeleteAllModal(false)}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all"
+                style={{ 
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                  opacity: deletingAll ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: deletingAll ? '#9CA3AF' : '#DC2626',
+                  color: '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                {deletingAll ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Deleting All...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can"></i>
+                    Yes, Delete All {orders.length} Orders
                   </>
                 )}
               </button>

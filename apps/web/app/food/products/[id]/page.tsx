@@ -27,6 +27,30 @@ interface Product {
   tags?: string[];
 }
 
+interface Review {
+  _id: string;
+  userId: {
+    name: string;
+  };
+  rating: number;
+  comment: string;
+  createdAt: string;
+  deliveryBoyRating?: number;
+  deliveryBoyComment?: string;
+}
+
+interface ReviewStats {
+  averageRating: number;
+  totalReviews: number;
+  ratingDistribution: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+  };
+}
+
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -39,6 +63,9 @@ export default function ProductDetailPage() {
   const [user, setUser] = useState<any>(null);
   const [cart, setCart] = useState<any[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   // Load user and cart on mount
   useEffect(() => {
@@ -72,6 +99,13 @@ export default function ProductDetailPage() {
         const data = await response.json();
         
         if (data.success) {
+          // ✅ Check if product is active
+          if (data.data.isActive === false) {
+            console.warn('⚠️ Product is inactive, redirecting to home...');
+            alert('This product is currently unavailable');
+            router.push('/food/home');
+            return;
+          }
           setProduct(data.data);
         } else {
           // Set sample product
@@ -87,7 +121,38 @@ export default function ProductDetailPage() {
     };
 
     fetchProduct();
-  }, [productId]);
+    loadReviews(); // Load reviews when product page loads
+  }, [productId, router]);
+
+  const loadReviews = async () => {
+    try {
+      setReviewsLoading(true);
+      const response = await fetch(`${API_BASE_URL}/food/reviews/product/${productId}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setReviews(data.data.reviews || []);
+        setReviewStats(data.data.stats || null);
+      }
+    } catch (error) {
+      console.error('Error loading reviews:', error);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
 
   const setSampleProduct = () => {
     const sampleProduct: Product = {
@@ -176,9 +241,8 @@ export default function ProductDetailPage() {
 
   const handleSubscribe = () => {
     setSubscribing(true);
-    const description = encodeURIComponent(product?.description || '');
-    const image = encodeURIComponent(product?.image || '');
-    router.push(`/food/subscribe/duration?product=${productId}&name=${encodeURIComponent(product?.name || '')}&price=${product?.subscriptionPrice}&description=${description}&image=${image}`);
+    // Only send essential data, fetch full product details on duration page
+    router.push(`/food/subscribe/duration?product=${productId}&name=${encodeURIComponent(product?.name || '')}&price=${product?.subscriptionPrice}`);
   };
 
   if (loading) {
@@ -315,13 +379,13 @@ export default function ProductDetailPage() {
                   <span className="text-xs font-bold ml-0.5" style={{ color: '#92400E' }}>{product.rating}</span>
                 </div>
                 <button 
-                  onClick={() => setSelectedTab('reviews')}
-                  className="text-xs underline transition-colors"
-                  style={{ color: '#6B7280' }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = '#E11D48'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = '#6B7280'}
-                >
-                  (124 reviews)
+              onClick={() => setSelectedTab('reviews')}
+              className="text-xs underline transition-colors"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#E11D48'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#6B7280'}
+            >
+              ({reviewStats?.totalReviews || 0} reviews)
                 </button>
               </div>
 
@@ -391,11 +455,13 @@ export default function ProductDetailPage() {
                         <span className="text-xs font-normal" style={{ color: '#9CA3AF' }}>/day</span>
                       </div>
                     </div>
-                    <div className="px-2 py-1 rounded-lg text-xs font-bold"
-                      style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}
-                    >
-                      -15%
-                    </div>
+                    {product.discount && product.discount > 0 && (
+                      <div className="px-2 py-1 rounded-lg text-xs font-bold"
+                        style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}
+                      >
+                        -{product.discount}%
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -544,7 +610,7 @@ export default function ProductDetailPage() {
                 }
               }}
             >
-              Reviews (124)
+              Reviews ({reviewStats?.totalReviews || 0})
               {selectedTab === 'reviews' && (
                 <div className="absolute bottom-0 left-0 right-0 h-1 rounded-t"
                   style={{ backgroundColor: '#E11D48' }}
@@ -626,58 +692,126 @@ export default function ProductDetailPage() {
               <div className="space-y-4">
                 <h3 className="text-base font-bold mb-3" style={{ color: '#0E1214' }}>Customer Reviews</h3>
                 
-                {/* Sample Reviews */}
-                {[
-                  { name: 'Rahul Sharma', rating: 5, comment: 'Absolutely delicious! Just like homemade food. Will order again.', date: '2 days ago' },
-                  { name: 'Priya Singh', rating: 4, comment: 'Very good taste and quality. Delivery was on time.', date: '1 week ago' },
-                  { name: 'Amit Kumar', rating: 5, comment: 'Best food delivery service! Fresh and tasty every time.', date: '2 weeks ago' },
-                ].map((review, index) => (
-                  <div key={index} className="pb-4 last:pb-0 border-b last:border-0"
-                    style={{ borderColor: '#F3F4F6' }}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-sm"
-                          style={{ backgroundColor: '#E11D48' }}
-                        >
-                          {review.name.charAt(0)}
+                {/* Rating Stats */}
+                {reviewStats && reviewStats.totalReviews > 0 && (
+                  <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: '#F9FAFB' }}>
+                    <div className="flex items-center gap-4">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold" style={{ color: '#E11D48' }}>
+                          {reviewStats.averageRating.toFixed(1)}
                         </div>
-                        <div>
-                          <div className="font-bold text-sm" style={{ color: '#0E1214' }}>{review.name}</div>
-                          <div className="text-xs" style={{ color: '#9CA3AF' }}>{review.date}</div>
+                        <div className="flex items-center gap-0.5 mt-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <svg
+                              key={star}
+                              className="w-4 h-4"
+                              fill={star <= reviewStats.averageRating ? '#F59E0B' : '#E5E7EB'}
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          ))}
+                        </div>
+                        <div className="text-xs mt-1" style={{ color: '#6B7280' }}>
+                          {reviewStats.totalReviews} reviews
                         </div>
                       </div>
-                      <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg"
-                        style={{ backgroundColor: '#FFFBEB' }}
-                      >
-                        <svg className="w-3 h-3 fill-current" style={{ color: '#F59E0B' }} viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        <span className="text-xs font-bold ml-0.5" style={{ color: '#92400E' }}>{review.rating}</span>
+                      <div className="flex-1 space-y-1">
+                        {[5, 4, 3, 2, 1].map((star) => {
+                          const count = reviewStats.ratingDistribution[star as keyof typeof reviewStats.ratingDistribution] || 0;
+                          const percentage = (count / reviewStats.totalReviews) * 100;
+                          return (
+                            <div key={star} className="flex items-center gap-2 text-xs">
+                              <span className="w-6 text-right" style={{ color: '#6B7280' }}>{star}★</span>
+                              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#E5E7EB' }}>
+                                <div
+                                  className="h-full rounded-full transition-all"
+                                  style={{ backgroundColor: '#F59E0B', width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                              <span className="w-8 text-right" style={{ color: '#6B7280' }}>{count}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    <p className="text-xs leading-relaxed ml-11" style={{ color: '#374151' }}>{review.comment}</p>
                   </div>
-                ))}
+                )}
 
-                <button 
-                  className="w-full py-2.5 rounded-lg font-semibold text-sm border-2 transition-all"
-                  style={{
-                    backgroundColor: '#FFFFFF',
-                    borderColor: '#E5E7EB',
-                    color: '#374151'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#E11D48';
-                    e.currentTarget.style.color = '#E11D48';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#E5E7EB';
-                    e.currentTarget.style.color = '#374151';
-                  }}
-                >
-                  Load More Reviews
-                </button>
+                {/* Reviews List */}
+                {reviewsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-8 h-8 border-4 rounded-full animate-spin" 
+                      style={{ borderColor: '#E11D48', borderTopColor: 'transparent' }}></div>
+                  </div>
+                ) : reviews.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: '#FEF3C7' }}>
+                      <svg className="w-8 h-8" style={{ color: '#F59E0B' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>No reviews yet</p>
+                    <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Be the first to review this product</p>
+                  </div>
+                ) : (
+                  <>
+                    {reviews.map((review) => (
+                      <div key={review._id} className="pb-4 last:pb-0 border-b last:border-0"
+                        style={{ borderColor: '#F3F4F6' }}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-sm"
+                              style={{ backgroundColor: '#E11D48' }}
+                            >
+                              {review.userId?.name?.charAt(0) || 'U'}
+                            </div>
+                            <div>
+                              <div className="font-bold text-sm" style={{ color: '#0E1214' }}>
+                                {review.userId?.name || 'Anonymous'}
+                              </div>
+                              <div className="text-xs" style={{ color: '#9CA3AF' }}>
+                                {formatDate(review.createdAt)}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg"
+                            style={{ backgroundColor: '#FFFBEB' }}
+                          >
+                            <svg className="w-3 h-3 fill-current" style={{ color: '#F59E0B' }} viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                            <span className="text-xs font-bold ml-0.5" style={{ color: '#92400E' }}>{review.rating}</span>
+                          </div>
+                        </div>
+                        {review.comment && (
+                          <p className="text-xs leading-relaxed ml-11 mb-2" style={{ color: '#374151' }}>{review.comment}</p>
+                        )}
+                        {review.deliveryBoyRating && (
+                          <div className="ml-11 flex items-center gap-2 p-2 rounded-lg text-xs" style={{ backgroundColor: '#F9FAFB' }}>
+                            <span className="font-semibold" style={{ color: '#6B7280' }}>Delivery:</span>
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <svg
+                                  key={star}
+                                  className="w-3 h-3"
+                                  fill={star <= review.deliveryBoyRating! ? '#F59E0B' : '#E5E7EB'}
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                              ))}
+                            </div>
+                            {review.deliveryBoyComment && (
+                              <span style={{ color: '#6B7280' }}>• {review.deliveryBoyComment}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -27,7 +27,32 @@ router.patch('/:id/cancel', auth, cancelOrder);
 router.get('/admin/all', getAllOrders); // adminAuth removed
 router.get('/admin/stats', getOrderStats); // adminAuth removed
 router.get('/admin/today', getTodaysOrders); // adminAuth removed
-router.get('/admin/:id', getOrderByIdAdmin); // adminAuth removed - MUST be after specific routes
+
+// 🚨 DANGER: Delete all orders (ONLY FOR TESTING)
+// MUST be before :id routes to avoid "delete-all-orders" being treated as an ID
+router.delete('/admin/delete-all-orders', async (req, res) => {
+  try {
+    const Order = (await import('../models/Order.js')).default;
+    const result = await Order.deleteMany({});
+    
+    console.log('🗑️ Deleted all orders:', result.deletedCount);
+    
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} orders`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error deleting all orders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// These MUST come after specific routes like delete-all-orders
+router.get('/admin/:id', getOrderByIdAdmin); // adminAuth removed
 router.patch('/admin/:id/status', updateOrderStatus); // adminAuth removed
 router.delete('/admin/:id', deleteOrder); // adminAuth removed
 

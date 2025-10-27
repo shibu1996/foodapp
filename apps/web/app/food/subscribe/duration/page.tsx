@@ -96,39 +96,34 @@ export default function DurationPage() {
   }, []);
 
   useEffect(() => {
-    // Wait for component to mount first
-    if (!mounted) {
-      return;
-    }
-
-    if (!searchParams) {
-      console.log('⚠️ No search params available');
-      // Check if we have data in state
-      if (state.productId && state.productName && state.basePrice) {
-        console.log('✅ Using existing state data (no URL params needed)');
-        setDataLoaded(true);
+    const loadProductData = async () => {
+      // Wait for component to mount first
+      if (!mounted) {
+        return;
       }
-      return;
-    }
-    
-    const productId = searchParams.get('product');
-    const productName = searchParams.get('name');
-    const price = searchParams.get('price');
-    const description = searchParams.get('description');
-    const image = searchParams.get('image');
-    
-    console.log('📥 Duration Page - URL Params:', {
-      productId,
-      productName,
-      price,
-      hasDescription: !!description,
-      hasImage: !!image,
-      descriptionLength: description?.length || 0,
-      imageLength: image?.length || 0
-    });
-    
-    // Update product details from URL params
-    if (productId && productName && price) {
+
+      if (!searchParams) {
+        console.log('⚠️ No search params available');
+        // Check if we have data in state
+        if (state.productId && state.productName && state.basePrice) {
+          console.log('✅ Using existing state data (no URL params needed)');
+          setDataLoaded(true);
+        }
+        return;
+      }
+      
+      const productId = searchParams.get('product');
+      const productName = searchParams.get('name');
+      const price = searchParams.get('price');
+      
+      console.log('📥 Duration Page - URL Params:', {
+        productId,
+        productName,
+        price
+      });
+      
+      // Update product details from URL params
+      if (productId && productName && price) {
       // Check if this is a NEW subscription (different product)
       const isNewSubscription = state.productId && state.productId !== productId;
       
@@ -161,12 +156,18 @@ export default function DurationPage() {
           finalPrice: 0,
         };
         
-        // Add description and image if provided
-        if (description && description !== 'undefined' && description !== '') {
-          updates.productDescription = decodeURIComponent(description);
-        }
-        if (image && image !== 'undefined' && image !== '') {
-          updates.productImage = decodeURIComponent(image);
+        // Fetch description and image from API
+        try {
+          const response = await fetch(`http://localhost:5000/api/food/products/${productId}`);
+          if (response.ok) {
+            const data = await response.json();
+            const product = data.data;
+            updates.productDescription = product.description || '';
+            updates.productImage = product.image || '';
+            console.log('✅ Fetched product details from API');
+          }
+        } catch (error) {
+          console.error('Error fetching product details:', error);
         }
         
         console.log('✨ Setting fresh state for new subscription');
@@ -182,17 +183,20 @@ export default function DurationPage() {
           basePrice: parseInt(price),
         };
         
-        // Always update description and image if provided in URL
-        if (description && description !== 'undefined' && description !== '') {
-          const decodedDesc = decodeURIComponent(description);
-          updates.productDescription = decodedDesc;
-          console.log('📝 Setting description:', decodedDesc.substring(0, 50) + '...');
-        }
-        
-        if (image && image !== 'undefined' && image !== '') {
-          const decodedImage = decodeURIComponent(image);
-          updates.productImage = decodedImage;
-          console.log('🖼️ Setting image:', decodedImage.substring(0, 50) + '...');
+        // Fetch description and image from API if not in state
+        if (!state.productDescription || !state.productImage) {
+          try {
+            const response = await fetch(`http://localhost:5000/api/food/products/${productId}`);
+            if (response.ok) {
+              const data = await response.json();
+              const product = data.data;
+              updates.productDescription = product.description || '';
+              updates.productImage = product.image || '';
+              console.log('✅ Fetched product details from API');
+            }
+          } catch (error) {
+            console.error('Error fetching product details:', error);
+          }
         }
         
         console.log('💾 Updating subscription state with:', {
@@ -223,7 +227,10 @@ export default function DurationPage() {
         alert('Invalid subscription link. Redirecting to home page...');
         router.push('/food/home');
       }
-    }
+      }
+    };
+    
+    loadProductData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, mounted]);
 

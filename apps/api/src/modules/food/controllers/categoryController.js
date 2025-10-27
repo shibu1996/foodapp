@@ -89,7 +89,7 @@ export const getCategoryBySlug = async (req, res) => {
 // Create new category (Admin only)
 export const createCategory = async (req, res) => {
   try {
-    const { name, description, icon, image, displayOrder } = req.body;
+    const { name, description, icon, image, displayOrder, isActive } = req.body;
     
     // Check if category already exists
     const existingCategory = await Category.findOne({
@@ -103,12 +103,20 @@ export const createCategory = async (req, res) => {
       });
     }
     
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+    
     const category = await Category.create({
       name,
+      slug,
       description,
       icon: icon || '🍛',
-      image,
+      image: image || undefined, // Will use default from schema
       displayOrder: displayOrder || 0,
+      isActive: isActive !== undefined ? isActive : true,
     });
     
     res.status(201).json({
@@ -141,6 +149,14 @@ export const createCategory = async (req, res) => {
 export const updateCategory = async (req, res) => {
   try {
     const updates = req.body;
+    
+    // Generate slug if name is being updated
+    if (updates.name) {
+      updates.slug = updates.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    }
     
     const category = await Category.findByIdAndUpdate(
       req.params.id,

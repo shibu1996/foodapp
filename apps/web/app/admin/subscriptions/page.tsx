@@ -45,6 +45,10 @@ export default function SubscriptionsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingSubscription, setDeletingSubscription] = useState<Subscription | null>(null);
   
+  // Delete all state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -214,6 +218,39 @@ export default function SubscriptionsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    try {
+      setDeletingAll(true);
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/subscriptions/admin/delete-all-subscriptions`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete all subscriptions');
+      }
+
+      // Clear subscriptions list
+      setSubscriptions([]);
+      
+      // Close modal
+      setShowDeleteAllModal(false);
+      
+      // Show success message
+      alert(`Successfully deleted ${data.deletedCount} subscriptions!`);
+    } catch (err: any) {
+      console.error('Error deleting all subscriptions:', err);
+      alert(err.message || 'Failed to delete all subscriptions');
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   // Filter subscriptions
   const filteredSubscriptions = subscriptions.filter((subscription) => {
     // Search filter
@@ -252,21 +289,45 @@ export default function SubscriptionsPage() {
             Manage customer meal subscriptions
           </p>
         </div>
-        <button
-          onClick={() => fetchSubscriptions(true)}
-          disabled={refreshing}
-          className="px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
-          style={{ backgroundColor: '#E11D48', fontSize: '0.875rem' }}
-          onMouseEnter={(e) => {
-            if (!refreshing) e.currentTarget.style.backgroundColor = '#BE123C';
-          }}
-          onMouseLeave={(e) => {
-            if (!refreshing) e.currentTarget.style.backgroundColor = '#E11D48';
-          }}
-        >
-          <i className={`fa-solid fa-rotate ${refreshing ? 'fa-spin' : ''}`}></i>
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-3">
+          {subscriptions.length > 0 && (
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              className="px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 border"
+              style={{ 
+                backgroundColor: 'transparent',
+                borderColor: '#DC2626',
+                color: '#DC2626',
+                fontSize: '0.875rem' 
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#FEE2E2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Delete all subscriptions"
+            >
+              <i className="fa-solid fa-trash-can"></i>
+              Delete All
+            </button>
+          )}
+          <button
+            onClick={() => fetchSubscriptions(true)}
+            disabled={refreshing}
+            className="px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+            style={{ backgroundColor: '#E11D48', fontSize: '0.875rem' }}
+            onMouseEnter={(e) => {
+              if (!refreshing) e.currentTarget.style.backgroundColor = '#BE123C';
+            }}
+            onMouseLeave={(e) => {
+              if (!refreshing) e.currentTarget.style.backgroundColor = '#E11D48';
+            }}
+          >
+            <i className={`fa-solid fa-rotate ${refreshing ? 'fa-spin' : ''}`}></i>
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {/* Filters Section */}
@@ -767,6 +828,109 @@ export default function SubscriptionsPage() {
                 onMouseLeave={(e: any) => e.currentTarget.style.backgroundColor = '#DC2626'}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 transition-opacity"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => !deletingAll && setShowDeleteAllModal(false)}
+          ></div>
+
+          {/* Modal */}
+          <div 
+            className="relative rounded-2xl shadow-2xl max-w-md w-full"
+            style={{ backgroundColor: '#FFFFFF' }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: '#FEE2E2' }}>
+                  <i className="fa-solid fa-triangle-exclamation text-xl" style={{ color: '#DC2626' }}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg" style={{ color: '#0E1214' }}>
+                    Delete All Subscriptions
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                    ⚠️ This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-circle-exclamation mt-0.5" style={{ color: '#DC2626' }}></i>
+                <div>
+                  <p className="font-bold mb-2" style={{ color: '#DC2626', fontSize: '0.9375rem' }}>
+                    WARNING: You are about to delete ALL subscriptions!
+                  </p>
+                  <p className="text-sm mb-2" style={{ color: '#0E1214' }}>
+                    This will permanently delete <strong>{subscriptions.length} subscriptions</strong> from the database.
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    This action is irreversible. All data will be lost forever.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB' }}>
+              <button
+                onClick={() => setShowDeleteAllModal(false)}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all"
+                style={{ 
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                  opacity: deletingAll ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: deletingAll ? '#9CA3AF' : '#DC2626',
+                  color: '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                {deletingAll ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Deleting All...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can"></i>
+                    Yes, Delete All {subscriptions.length} Subscriptions
+                  </>
+                )}
               </button>
             </div>
           </div>

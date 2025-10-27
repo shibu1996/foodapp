@@ -28,7 +28,7 @@ const CategorySchema = new mongoose.Schema(
     },
     image: {
       type: String,
-      required: [true, 'Category image is required'],
+      default: 'https://via.placeholder.com/400x300?text=Category+Image',
     },
     displayOrder: {
       type: Number,

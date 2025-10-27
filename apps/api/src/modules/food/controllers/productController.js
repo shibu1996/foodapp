@@ -150,11 +150,19 @@ export const createProduct = async (req, res) => {
       stock,
     } = req.body;
     
-    // Calculate discount if not provided
+    // Calculate discount based on subscription vs one-time price
     let calculatedDiscount = discount;
-    if (!discount && originalPrice && price) {
-      calculatedDiscount = Math.round(((originalPrice - price) / originalPrice) * 100);
+    if (!discount && price && subscriptionPrice) {
+      // Discount = how much cheaper subscription is compared to one-time
+      calculatedDiscount = Math.round(((price - subscriptionPrice) / price) * 100);
     }
+    
+    console.log('Creating product with:');
+    console.log('- Name:', name);
+    console.log('- Description:', description);
+    console.log('- Price:', price);
+    console.log('- Subscription Price:', subscriptionPrice);
+    console.log('- Calculated Discount:', calculatedDiscount, '%');
     
     const product = await Product.create({
       name,
@@ -163,7 +171,7 @@ export const createProduct = async (req, res) => {
       price,
       originalPrice: originalPrice || price,
       subscriptionPrice,
-      discount: calculatedDiscount,
+      discount: calculatedDiscount || 0,
       rating: rating || 4.0,
       isVeg: isVeg !== undefined ? isVeg : true,
       isBestSeller: isBestSeller || false,
@@ -201,9 +209,15 @@ export const updateProduct = async (req, res) => {
   try {
     const updates = req.body;
     
-    // Calculate discount if price changes
-    if (updates.price && updates.originalPrice) {
-      updates.discount = Math.round(((updates.originalPrice - updates.price) / updates.originalPrice) * 100);
+    // Calculate discount if price or subscription price changes
+    if (updates.price && updates.subscriptionPrice) {
+      updates.discount = Math.round(((updates.price - updates.subscriptionPrice) / updates.price) * 100);
+    } else if (updates.price || updates.subscriptionPrice) {
+      // If only one is updated, get the other from existing product
+      const existingProduct = await Product.findById(req.params.id);
+      const price = updates.price || existingProduct.price;
+      const subscriptionPrice = updates.subscriptionPrice || existingProduct.subscriptionPrice;
+      updates.discount = Math.round(((price - subscriptionPrice) / price) * 100);
     }
     
     const product = await Product.findByIdAndUpdate(

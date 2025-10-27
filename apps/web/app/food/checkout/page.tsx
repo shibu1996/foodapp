@@ -5,6 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { FoodHeader } from '../../components/FoodHeader';
 import { AddressForm } from '../../components/AddressForm';
 
+const API_BASE_URL = 'http://localhost:5000';
+
+// Declare Razorpay on window object
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 interface Address {
   _id: string;
   houseNo: string;
@@ -398,7 +407,7 @@ export default function CheckoutPage() {
       const userId = localStorage.getItem('userId');
 
       // Calculate current order amount
-      const orderAmount = calculateSubtotal();
+      const orderAmount = calculateTotal();
 
       const response = await fetch(`${API_BASE_URL}/api/food/coupons/validate`, {
         method: 'POST',
@@ -603,6 +612,7 @@ export default function CheckoutPage() {
 
       console.log('📤 Sending order data:', JSON.stringify(orderData, null, 2));
 
+      // Step 1: Create Order
       const response = await fetch('http://localhost:5000/api/food/orders', {
         method: 'POST',
         headers: {
@@ -629,16 +639,120 @@ export default function CheckoutPage() {
         throw new Error(data.error || data.message || 'Failed to place order');
       }
 
-      // Clear cart
-      localStorage.removeItem('cart');
-      window.dispatchEvent(new Event('cartUpdated'));
-      
-      alert(`Order placed successfully! Order Number: ${data.data.orderNumber}`);
-      router.push('/food/home');
+      const orderId = data.data._id;
+      const orderNumber = data.data.orderNumber;
+
+      // Step 2: Handle Payment
+      if (paymentMethod !== 'cod') {
+        // Online payment via Razorpay
+        const totalAmount = calculateTotal() + calculateDeliveryFees() + calculatePlatformFee() + calculateTax() + calculatePackagingCharge() - (appliedCoupon?.discountAmount || 0);
+        
+        await handleRazorpayPayment(orderId, totalAmount, orderNumber);
+      } else {
+        // COD - Order already created, just clear cart
+        localStorage.removeItem('cart');
+        window.dispatchEvent(new Event('cartUpdated'));
+        
+        alert(`Order placed successfully! Order Number: ${orderNumber}`);
+        router.push('/food/home');
+      }
     } catch (error: any) {
       console.error('Error placing order:', error);
       alert(error.message || 'Failed to place order. Please try again.');
     } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  const handleRazorpayPayment = async (orderId: string, amount: number, orderNumber: string) => {
+    try {
+      const token = localStorage.getItem('token');
+
+      // Create Razorpay order
+      const paymentResponse = await fetch(`${API_BASE_URL}/api/food/payments/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          amount,
+          orderId,
+          userId: user._id
+        })
+      });
+
+      const paymentData = await paymentResponse.json();
+
+      if (!paymentData.success) {
+        throw new Error('Failed to create payment order');
+      }
+
+      const { razorpayOrderId, key } = paymentData.data;
+
+      // Razorpay checkout options
+      const options = {
+        key,
+        amount: amount * 100, // Razorpay expects amount in paise
+        currency: 'INR',
+        name: 'Food Delivery App',
+        description: `Order #${orderNumber}`,
+        order_id: razorpayOrderId,
+        handler: async function (response: any) {
+          // Payment successful - verify it
+          try {
+            const verifyResponse = await fetch(`${API_BASE_URL}/api/food/payments/verify`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature
+              })
+            });
+
+            const verifyData = await verifyResponse.json();
+
+            if (verifyData.success) {
+              // Payment verified - clear cart and redirect
+              localStorage.removeItem('cart');
+              window.dispatchEvent(new Event('cartUpdated'));
+              
+              alert(`Payment successful! Order Number: ${orderNumber}`);
+              router.push('/food/home');
+            } else {
+              throw new Error('Payment verification failed');
+            }
+          } catch (error: any) {
+            console.error('Payment verification error:', error);
+            alert('Payment verification failed. Please contact support with Order #' + orderNumber);
+          }
+        },
+        prefill: {
+          name: user?.name || '',
+          email: user?.email || '',
+          contact: user?.phone || ''
+        },
+        theme: {
+          color: '#E11D48'
+        },
+        modal: {
+          ondismiss: function() {
+            alert('Payment cancelled. Your order has been saved. You can complete payment later.');
+            setPlacingOrder(false);
+          }
+        }
+      };
+
+      // Open Razorpay checkout
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+    } catch (error: any) {
+      console.error('Razorpay payment error:', error);
+      alert('Payment initialization failed. Please try again.');
       setPlacingOrder(false);
     }
   };
@@ -789,10 +903,17 @@ export default function CheckoutPage() {
   const total = subtotal + deliveryFee + platformFee + packagingCharge + tax - couponDiscount;
 
   return (
-    <div className="min-h-screen" style={{ background: '#F9FAFB' }}>
-      <FoodHeader
-        user={user}
-        currentLocation={currentLocation}
+    <>
+      {/* Razorpay SDK */}
+      <script 
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        async
+      />
+
+      <div className="min-h-screen" style={{ background: '#F9FAFB' }}>
+        <FoodHeader
+          user={user}
+          currentLocation={currentLocation}
         showLocation={false}
         showSearch={false}
         showCart={false}
@@ -871,8 +992,8 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Delivery Type Selector - ONLY show if there are one-time items */}
-            {cart.some((item: any) => item.type !== 'subscription') && (
+            {/* Delivery Type Selector - DYNAMIC from Admin Charges */}
+            {cart.some((item: any) => item.type !== 'subscription') && charges.delivery && charges.delivery.length > 0 && (
               <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: '1px solid #E5E7EB' }}>
                 <h3 className="text-lg font-bold mb-4" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
                   <i className="fa fa-truck mr-2" style={{ color: '#E11D48' }}></i>
@@ -880,163 +1001,124 @@ export default function CheckoutPage() {
                 </h3>
                 
                 <div className="space-y-3">
-                  {/* Express Delivery */}
-                  <button
-                    onClick={() => setDeliveryType('express')}
-                    className="w-full p-4 rounded-xl border-2 text-left transition-all"
-                    style={{
-                      borderColor: deliveryType === 'express' ? '#E11D48' : '#E5E7EB',
-                      background: deliveryType === 'express' ? '#FEF2F2' : '#FFFFFF'
-                    }}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <i className="fa fa-bolt" style={{ color: '#F59E0B', fontSize: '14px' }}></i>
-                          <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Express Delivery</span>
-                          {deliveryType === 'express' && deliveryDistance <= 3 && (
-                            <span className="text-xs font-bold px-2 py-0.5 rounded" 
-                              style={{ background: '#10B981', color: '#FFFFFF' }}>
-                              FREE
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
-                          Instant delivery • 30-40 mins
-                        </p>
-                        <div className="flex flex-wrap gap-1.5 text-xs">
-                          <span className="px-2 py-1 rounded" style={{ background: '#D1FAE5', color: '#059669' }}>
-                            0-3km: FREE
-                          </span>
-                          <span className="px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#D97706' }}>
-                            3-5km: ₹20
-                          </span>
-                          <span className="px-2 py-1 rounded" style={{ background: '#FED7AA', color: '#C2410C' }}>
-                            5-10km: ₹30
-                          </span>
-                          <span className="px-2 py-1 rounded" style={{ background: '#FECACA', color: '#991B1B' }}>
-                            10+km: ₹50
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
+                  {charges.delivery.map((charge: any) => {
+                    const isDistanceBased = charge.chargeType === 'distance';
+                    const isFree = charge.amount === 0;
+                    const deliveryTypeName = charge.name.toLowerCase().includes('express') ? 'express' :
+                                            charge.name.toLowerCase().includes('scheduled') || charge.name.toLowerCase().includes('shared') ? 'scheduled' :
+                                            'standard';
+                    const isSelected = deliveryType === deliveryTypeName;
 
-                  {/* Distance Input for Express */}
-                  {deliveryType === 'express' && (
-                    <div className="p-4 rounded-xl" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2' }}>
-                      <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                        <i className="fa fa-map-marker-alt mr-1.5" style={{ color: '#E11D48' }}></i>
-                        Enter Delivery Distance (km)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        step="0.5"
-                        value={deliveryDistance}
-                        onChange={(e) => setDeliveryDistance(parseFloat(e.target.value) || 0)}
-                        className="w-full px-4 py-2.5 rounded-lg border-2 text-sm font-semibold focus:outline-none"
-                        style={{ borderColor: '#E11D48', color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}
-                        placeholder="e.g., 2.5"
-                      />
-                      <div className="flex items-center justify-between mt-3">
-                        <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                          Delivery Charge:
-                        </p>
-                        <p className="text-sm font-bold" style={{ color: '#E11D48' }}>
-                          {deliveryDistance <= 3 ? 'FREE' : deliveryDistance <= 5 ? '₹20' : deliveryDistance <= 10 ? '₹30' : '₹50'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                    return (
+                      <div key={charge._id}>
+                        <button
+                          onClick={() => setDeliveryType(deliveryTypeName as any)}
+                          className="w-full p-4 rounded-xl border-2 text-left transition-all"
+                          style={{
+                            borderColor: isSelected ? '#E11D48' : '#E5E7EB',
+                            background: isSelected ? '#FEF2F2' : '#FFFFFF'
+                          }}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <i className={`fa fa-${deliveryTypeName === 'express' ? 'bolt' : deliveryTypeName === 'scheduled' ? 'clock' : 'shipping-fast'}`} 
+                                   style={{ color: deliveryTypeName === 'express' ? '#F59E0B' : deliveryTypeName === 'scheduled' ? '#10B981' : '#6366F1', fontSize: '14px' }}></i>
+                                <span className="text-sm font-bold" style={{ color: '#0E1214' }}>{charge.name}</span>
+                                {isFree && (
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded" 
+                                    style={{ background: '#10B981', color: '#FFFFFF' }}>
+                                    FREE
+                                  </span>
+                                )}
+                                {!isFree && !isDistanceBased && (
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded" 
+                                    style={{ background: '#6366F1', color: '#FFFFFF' }}>
+                                    {charge.type === 'percentage' ? `${charge.amount}%` : `₹${charge.amount}`}
+                                  </span>
+                                )}
+                              </div>
+                              {charge.description && (
+                                <p className="text-xs" style={{ color: '#6B7280' }}>
+                                  {charge.description}
+                                </p>
+                              )}
+                              {isDistanceBased && charge.maxDistance && (
+                                <p className="text-xs mt-1" style={{ color: '#F59E0B' }}>
+                                  <i className="fa fa-info-circle mr-1"></i>
+                                  Distance-based: Up to {charge.maxDistance}km
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </button>
 
-                  {/* Scheduled Delivery */}
-                  <button
-                    onClick={() => setDeliveryType('scheduled')}
-                    className="w-full p-4 rounded-xl border-2 text-left transition-all"
-                    style={{
-                      borderColor: deliveryType === 'scheduled' ? '#E11D48' : '#E5E7EB',
-                      background: deliveryType === 'scheduled' ? '#FEF2F2' : '#FFFFFF'
-                    }}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <i className="fa fa-clock" style={{ color: '#10B981', fontSize: '14px' }}></i>
-                          <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Scheduled Delivery</span>
-                          <span className="text-xs font-bold px-2 py-0.5 rounded" 
-                            style={{ background: '#10B981', color: '#FFFFFF' }}>
-                            FREE
-                          </span>
-                        </div>
-                        <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
-                          Choose a time slot • Batched delivery
-                        </p>
-                        <p className="text-xs" style={{ color: '#F59E0B' }}>
-                          <i className="fa fa-info-circle mr-1"></i>
-                          Wait time: 2-3 orders batched together
-                        </p>
-                      </div>
-                    </div>
-                  </button>
+                        {/* Distance Input for Distance-Based Delivery */}
+                        {isSelected && isDistanceBased && (
+                          <div className="p-4 rounded-xl mt-2" style={{ background: '#FEF2F2', border: '1px solid #FEE2E2' }}>
+                            <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                              <i className="fa fa-map-marker-alt mr-1.5" style={{ color: '#E11D48' }}></i>
+                              Enter Delivery Distance (km)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={charge.maxDistance || 50}
+                              step="0.5"
+                              value={deliveryDistance}
+                              onChange={(e) => setDeliveryDistance(parseFloat(e.target.value) || 0)}
+                              className="w-full px-4 py-2.5 rounded-lg border-2 text-sm font-semibold focus:outline-none"
+                              style={{ borderColor: '#E11D48', color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}
+                              placeholder="e.g., 2.5"
+                            />
+                            <div className="flex items-center justify-between mt-3">
+                              <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                                Delivery Charge:
+                              </p>
+                              <p className="text-sm font-bold" style={{ color: '#E11D48' }}>
+                                {charge.type === 'percentage' 
+                                  ? `${charge.amount}% of order` 
+                                  : deliveryDistance <= (charge.maxDistance || 0) 
+                                    ? (charge.amount === 0 ? 'FREE' : `₹${charge.amount}`)
+                                    : 'Distance exceeds limit'}
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
-                  {/* Time Slots for Scheduled Delivery */}
-                  {deliveryType === 'scheduled' && (
-                    <div className="p-4 rounded-xl" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                      <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                        <i className="fa fa-calendar-alt mr-1.5" style={{ color: '#10B981' }}></i>
-                        Select Time Slot
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: 'slot1', time: '12:00-2:00 PM' },
-                          { id: 'slot2', time: '2:00-4:00 PM' },
-                          { id: 'slot3', time: '4:00-6:00 PM' },
-                          { id: 'slot4', time: '6:00-8:00 PM' },
-                        ].map((slot) => (
-                          <button
-                            key={slot.id}
-                            onClick={() => setSelectedTimeSlot(slot.id)}
-                            className="px-3 py-2 rounded-lg font-semibold text-xs transition-all"
-                            style={{
-                              background: selectedTimeSlot === slot.id ? '#10B981' : '#FFFFFF',
-                              color: selectedTimeSlot === slot.id ? '#FFFFFF' : '#6B7280',
-                              border: `1.5px solid ${selectedTimeSlot === slot.id ? '#10B981' : '#D1D5DB'}`
-                            }}
-                          >
-                            {slot.time}
-                          </button>
-                        ))}
+                        {/* Time Slots for Scheduled Delivery */}
+                        {isSelected && deliveryTypeName === 'scheduled' && (
+                          <div className="p-4 rounded-xl mt-2" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                            <label className="block text-xs font-semibold mb-2" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                              <i className="fa fa-calendar-alt mr-1.5" style={{ color: '#10B981' }}></i>
+                              Select Time Slot
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { id: 'slot1', time: '12:00-2:00 PM' },
+                                { id: 'slot2', time: '2:00-4:00 PM' },
+                                { id: 'slot3', time: '4:00-6:00 PM' },
+                                { id: 'slot4', time: '6:00-8:00 PM' },
+                              ].map((slot) => (
+                                <button
+                                  key={slot.id}
+                                  onClick={() => setSelectedTimeSlot(slot.id)}
+                                  className="px-3 py-2 rounded-lg font-semibold text-xs transition-all"
+                                  style={{
+                                    background: selectedTimeSlot === slot.id ? '#10B981' : '#FFFFFF',
+                                    color: selectedTimeSlot === slot.id ? '#FFFFFF' : '#6B7280',
+                                    border: `1.5px solid ${selectedTimeSlot === slot.id ? '#10B981' : '#D1D5DB'}`
+                                  }}
+                                >
+                                  {slot.time}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Standard Delivery */}
-                  <button
-                    onClick={() => setDeliveryType('standard')}
-                    className="w-full p-4 rounded-xl border-2 text-left transition-all"
-                    style={{
-                      borderColor: deliveryType === 'standard' ? '#E11D48' : '#E5E7EB',
-                      background: deliveryType === 'standard' ? '#FEF2F2' : '#FFFFFF'
-                    }}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <i className="fa fa-shipping-fast" style={{ color: '#6366F1', fontSize: '14px' }}></i>
-                          <span className="text-sm font-bold" style={{ color: '#0E1214' }}>Standard Delivery</span>
-                          <span className="text-xs font-bold px-2 py-0.5 rounded" 
-                            style={{ background: '#6366F1', color: '#FFFFFF' }}>
-                            ₹30
-                          </span>
-                        </div>
-                        <p className="text-xs" style={{ color: '#6B7280' }}>
-                          Normal delivery • Within 1-2 hours
-                        </p>
-                      </div>
-                    </div>
-                  </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -2006,6 +2088,7 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

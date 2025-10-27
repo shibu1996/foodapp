@@ -65,9 +65,8 @@ export function ProductCard({ product, onAddToCart, cart = [] }: ProductCardProp
     e.preventDefault();
     e.stopPropagation();
     setSubscribing(true);
-    const description = encodeURIComponent(product.description || '');
-    const image = encodeURIComponent(product.image || '');
-    router.push(`/food/subscribe/duration?product=${productId}&name=${encodeURIComponent(product.name)}&price=${product.subscriptionPrice}&description=${description}&image=${image}`);
+    // Only send essential data, fetch full product details on duration page
+    router.push(`/food/subscribe/duration?product=${productId}&name=${encodeURIComponent(product.name)}&price=${product.subscriptionPrice}`);
   };
 
   const getTagline = () => {
@@ -87,11 +86,11 @@ export function ProductCard({ product, onAddToCart, cart = [] }: ProductCardProp
         borderColor: '#E5E7EB',
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
       }}
-      onMouseEnter={(e) => {
+      onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
         e.currentTarget.style.borderColor = '#E11D48';
         e.currentTarget.style.transform = 'translateY(-4px)';
       }}
-      onMouseLeave={(e) => {
+      onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
         e.currentTarget.style.borderColor = '#E5E7EB';
         e.currentTarget.style.transform = 'translateY(0)';
       }}
@@ -133,10 +132,10 @@ export function ProductCard({ product, onAddToCart, cart = [] }: ProductCardProp
           {product.name}
         </h3>
         
-        {/* Tagline & Rating Combined */}
+        {/* Description & Rating Combined */}
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs flex-1 mr-2" style={{ color: '#6B7280' }}>
-            {getTagline()}
+          <p className="text-xs flex-1 mr-2 line-clamp-1" style={{ color: '#6B7280' }}>
+            {product.description || getTagline()}
           </p>
           
           {/* Rating Badge */}
@@ -191,9 +190,11 @@ export function ProductCard({ product, onAddToCart, cart = [] }: ProductCardProp
                   <span className="text-xs font-medium" style={{ color: '#9CA3AF' }}>/day</span>
                 </div>
               </div>
-              <div className="px-1.5 py-0.5 rounded-md text-xs font-bold" style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}>
-                -15%
-              </div>
+              {product.discount && product.discount > 0 && (
+                <div className="px-1.5 py-0.5 rounded-md text-xs font-bold" style={{ backgroundColor: '#E11D48', color: '#FFFFFF' }}>
+                  -{product.discount}%
+                </div>
+              )}
             </div>
           </div>
         </div>

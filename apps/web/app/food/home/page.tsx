@@ -340,7 +340,10 @@ export default function HomePage() {
         const data = await response.json();
         
         if (data.success) {
-          setProducts(data.data);
+          // ✅ Filter only active products for customers
+          const activeProducts = data.data.filter((product: any) => product.isActive !== false);
+          setProducts(activeProducts);
+          console.log(`✅ Loaded ${activeProducts.length} active products (${data.data.length} total)`);
         }
       } catch (error) {
         console.error('Error fetching products:', error);

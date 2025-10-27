@@ -16,6 +16,13 @@ import chargeRoutes from './modules/food/routes/chargeRoutes.js';
 import timeSlotRoutes from './modules/food/routes/timeSlotRoutes.js';
 import outletRoutes from './modules/food/routes/outletRoutes.js';
 import couponRoutes from './modules/food/routes/couponRoutes.js';
+import reviewRoutes from './modules/food/routes/reviewRoutes.js';
+import customerRoutes from './modules/food/routes/customerRoutes.js';
+import analyticsRoutes from './modules/food/routes/analyticsRoutes.js';
+import inventoryRoutes from './modules/food/routes/inventoryRoutes.js';
+import paymentRoutes from './modules/food/routes/paymentRoutes.js';
+import settingsRoutes from './modules/food/routes/settingsRoutes.js';
+import expenseRoutes from './modules/food/routes/expenseRoutes.js';
 import seedCharges from './modules/food/utils/seedCharges.js';
 
 dotenv.config();
@@ -64,6 +71,13 @@ app.use('/api/food/charges', chargeRoutes);
 app.use('/api/food/time-slots', timeSlotRoutes);
 app.use('/api/food/outlets', outletRoutes);
 app.use('/api/food/coupons', couponRoutes);
+app.use('/api/food/reviews', reviewRoutes);
+app.use('/api/food/customers', customerRoutes);
+app.use('/api/food/analytics', analyticsRoutes);
+app.use('/api/food/inventory', inventoryRoutes);
+app.use('/api/food/payments', paymentRoutes);
+app.use('/api/food/settings', settingsRoutes);
+app.use('/api/food/expenses', expenseRoutes);
 
 // Basic health check
 app.get('/health', (req, res) => {
@@ -191,9 +205,23 @@ const startServer = async () => {
   } catch (error) {
     logger.error('Failed to start server', { error });
     console.error('❌ Failed to start server:', error);
+    console.error('❌ Error details:', error.stack);
     process.exit(1);
   }
 };
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error);
+  console.error('💥 Stack:', error.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise);
+  console.error('💥 Reason:', reason);
+  process.exit(1);
+});
 
 startServer();
 

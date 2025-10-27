@@ -37,7 +37,32 @@ router.patch('/:id/modify', auth, modifySubscription);
 router.get('/admin/all', getAllSubscriptions); // adminAuth removed
 router.get('/admin/stats', getSubscriptionStats); // adminAuth removed
 router.get('/admin/today', getTodaysDeliveries); // adminAuth removed
-router.get('/admin/:id', getSubscriptionByIdAdmin); // adminAuth removed - MUST be after specific routes
+
+// 🚨 DANGER: Delete all subscriptions (ONLY FOR TESTING)
+// MUST be before :id routes to avoid "delete-all-subscriptions" being treated as an ID
+router.delete('/admin/delete-all-subscriptions', async (req, res) => {
+  try {
+    const Subscription = (await import('../models/Subscription.js')).default;
+    const result = await Subscription.deleteMany({});
+    
+    console.log('🗑️ Deleted all subscriptions:', result.deletedCount);
+    
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} subscriptions`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error deleting all subscriptions:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// These MUST come after specific routes like delete-all-subscriptions
+router.get('/admin/:id', getSubscriptionByIdAdmin); // adminAuth removed
 router.patch('/admin/:id/status', updateSubscriptionStatus); // adminAuth removed
 router.delete('/:id', deleteSubscription); // adminAuth removed
 

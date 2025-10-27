@@ -6,13 +6,18 @@
 /**
  * Sanitize string input - remove potentially harmful characters
  */
-export const sanitizeString = (input) => {
+export const sanitizeString = (input, isLongText = false) => {
   if (typeof input !== 'string') return '';
+  
+  // Don't limit length for base64 data or long text fields
+  if (isLongText || input.startsWith('data:') || input.length > 1000) {
+    return input.trim(); // Just trim, don't replace or limit
+  }
   
   return input
     .trim()
     .replace(/[<>]/g, '') // Remove < and > to prevent XSS
-    .slice(0, 1000); // Limit length
+    .slice(0, 1000); // Limit length for normal strings
 };
 
 /**
@@ -79,9 +84,14 @@ export const sanitizeObject = (obj) => {
   }
 
   const sanitized = {};
+  // Fields that can have long text and should not be truncated
+  const longTextFields = ['description', 'image', 'images', 'photo', 'photos', 'url', 'urls', 'avatar', 'content', 'body', 'notes', 'address'];
+  
   for (const key in obj) {
     if (typeof obj[key] === 'string') {
-      sanitized[key] = sanitizeString(obj[key]);
+      // Check if this is a long text field
+      const isLongText = longTextFields.some(field => key.toLowerCase().includes(field));
+      sanitized[key] = sanitizeString(obj[key], isLongText);
     } else if (typeof obj[key] === 'object') {
       sanitized[key] = sanitizeObject(obj[key]);
     } else {
@@ -194,11 +204,35 @@ export const detectInjection = (input) => {
 };
 
 /**
+ * Check if string is base64 encoded data
+ */
+const isBase64Data = (str) => {
+  if (!str || typeof str !== 'string') return false;
+  
+  // Check if it's a data URL (base64 image/video)
+  if (str.startsWith('data:')) {
+    return true;
+  }
+  
+  // Check if it looks like base64 (long string with base64 chars)
+  if (str.length > 100 && /^[A-Za-z0-9+/=]+$/.test(str.substring(0, 100))) {
+    return true;
+  }
+  
+  return false;
+};
+
+/**
  * Middleware to detect and block injection attempts
  */
 export const antiInjection = (req, res, next) => {
   const checkObject = (obj, path = '') => {
     if (typeof obj === 'string') {
+      // Skip base64 data and URLs
+      if (isBase64Data(obj) || path.includes('image') || path.includes('url') || path.includes('photo') || path.includes('avatar')) {
+        return false;
+      }
+      
       if (detectInjection(obj)) {
         console.warn(`🚨 Injection attempt detected in ${path}: ${obj.substring(0, 50)}`);
         return true;

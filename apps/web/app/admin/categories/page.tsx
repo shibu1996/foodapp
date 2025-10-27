@@ -21,6 +21,17 @@ export default function CategoriesPage() {
   const [error, setError] = useState('');
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   
+  // Delete modal
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; category: Category | null }>({
+    isOpen: false,
+    category: null
+  });
+  const [deleting, setDeleting] = useState(false);
+  
+  // Delete all state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all, active, inactive
@@ -45,6 +56,103 @@ export default function CategoriesPage() {
       setError(err.message || 'Failed to load categories');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteModal.category) return;
+
+    try {
+      setDeleting(true);
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/categories/${deleteModal.category._id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete category');
+      }
+
+      // Remove category from list
+      setCategories(categories.filter(c => c._id !== deleteModal.category!._id));
+      
+      // Close modal
+      setDeleteModal({ isOpen: false, category: null });
+    } catch (err: any) {
+      console.error('Error deleting category:', err);
+      alert(err.message || 'Failed to delete category');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleToggleStatus = async (category: Category) => {
+    try {
+      const token = localStorage.getItem('token');
+      const newStatus = !category.isActive;
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/categories/${category._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        },
+        body: JSON.stringify({ isActive: newStatus })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update status');
+      }
+
+      // Update category in list
+      setCategories(categories.map(c => 
+        c._id === category._id ? { ...c, isActive: newStatus } : c
+      ));
+    } catch (err: any) {
+      console.error('Error toggling status:', err);
+      alert(err.message || 'Failed to update status');
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      setDeletingAll(true);
+      
+      const response = await fetch(`${API_BASE_URL}/api/food/categories/admin/delete-all-categories`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete all categories');
+      }
+
+      // Clear categories list
+      setCategories([]);
+      
+      // Close modal
+      setShowDeleteAllModal(false);
+      
+      // Show success message
+      alert(`Successfully deleted ${data.deletedCount} categories!`);
+    } catch (err: any) {
+      console.error('Error deleting all categories:', err);
+      alert(err.message || 'Failed to delete all categories');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -74,20 +182,44 @@ export default function CategoriesPage() {
             Manage product categories for your restaurant menu
           </p>
         </div>
-        <button
-          onClick={() => router.push('/admin/categories/new')}
-          className="px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
-          style={{ backgroundColor: '#E11D48', fontSize: '0.875rem' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#BE123C';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#E11D48';
-          }}
-        >
-          <i className="fa-solid fa-plus"></i>
-          Add New Category
-        </button>
+        <div className="flex items-center gap-3">
+          {categories.length > 0 && (
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              className="px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 border"
+              style={{ 
+                backgroundColor: 'transparent',
+                borderColor: '#DC2626',
+                color: '#DC2626',
+                fontSize: '0.875rem' 
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#FEE2E2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Delete all categories"
+            >
+              <i className="fa-solid fa-trash-can"></i>
+              Delete All
+            </button>
+          )}
+          <button
+            onClick={() => router.push('/admin/categories/new')}
+            className="px-6 py-3 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+            style={{ backgroundColor: '#E11D48', fontSize: '0.875rem' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#BE123C';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#E11D48';
+            }}
+          >
+            <i className="fa-solid fa-plus"></i>
+            Add New Category
+          </button>
+        </div>
       </div>
 
       {/* Filters Section */}
@@ -381,14 +513,30 @@ export default function CategoriesPage() {
                                   <i className="fa-solid fa-pen-to-square w-4"></i>
                                   Edit Category
                                 </button>
+                                <button
+                                  onClick={() => {
+                                    setOpenDropdown(null);
+                                    handleToggleStatus(category);
+                                  }}
+                                  className="w-full px-4 py-2.5 text-left flex items-center gap-3 transition-all duration-200"
+                                  style={{ color: '#0E1214', fontSize: '0.875rem' }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = category.isActive ? '#FEF3C7' : '#D1FAE5';
+                                    e.currentTarget.style.color = category.isActive ? '#92400E' : '#065F46';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                    e.currentTarget.style.color = '#0E1214';
+                                  }}
+                                >
+                                  <i className={`fa-solid ${category.isActive ? 'fa-eye-slash' : 'fa-eye'} w-4`}></i>
+                                  {category.isActive ? 'Mark Inactive' : 'Mark Active'}
+                                </button>
                                 <div className="my-1 border-t" style={{ borderColor: '#E5E7EB' }}></div>
                                 <button
                                   onClick={() => {
                                     setOpenDropdown(null);
-                                    if (window.confirm(`Are you sure you want to delete "${category.name}"?`)) {
-                                      // TODO: Implement delete functionality
-                                      console.log('Delete category:', category._id);
-                                    }
+                                    setDeleteModal({ isOpen: true, category });
                                   }}
                                   className="w-full px-4 py-2.5 text-left flex items-center gap-3 transition-all duration-200"
                                   style={{ color: '#DC2626', fontSize: '0.875rem' }}
@@ -428,6 +576,212 @@ export default function CategoriesPage() {
               <i className="fa-solid fa-filter"></i> Filters applied
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && deleteModal.category && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 transition-opacity"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => !deleting && setDeleteModal({ isOpen: false, category: null })}
+          ></div>
+
+          {/* Modal */}
+          <div 
+            className="relative rounded-2xl shadow-2xl max-w-md w-full"
+            style={{ backgroundColor: '#FFFFFF' }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: '#FEE2E2' }}>
+                  <i className="fa-solid fa-trash-can text-xl" style={{ color: '#DC2626' }}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg" style={{ color: '#0E1214' }}>
+                    Delete Category
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                    This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-circle-exclamation mt-0.5" style={{ color: '#DC2626' }}></i>
+                <div>
+                  <p className="font-medium mb-1" style={{ color: '#0E1214', fontSize: '0.875rem' }}>
+                    Are you sure you want to delete?
+                  </p>
+                  <p className="font-bold mb-2" style={{ color: '#DC2626', fontSize: '0.9375rem' }}>
+                    "{deleteModal.category.name}"
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    This will permanently remove the category and cannot be recovered.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB' }}>
+              <button
+                onClick={() => setDeleteModal({ isOpen: false, category: null })}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all"
+                style={{ 
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                  opacity: deleting ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: deleting ? '#9CA3AF' : '#DC2626',
+                  color: '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deleting) e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                {deleting ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can"></i>
+                    Delete Category
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 transition-opacity"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => !deletingAll && setShowDeleteAllModal(false)}
+          ></div>
+
+          {/* Modal */}
+          <div 
+            className="relative rounded-2xl shadow-2xl max-w-md w-full"
+            style={{ backgroundColor: '#FFFFFF' }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: '#FEE2E2' }}>
+                  <i className="fa-solid fa-triangle-exclamation text-xl" style={{ color: '#DC2626' }}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg" style={{ color: '#0E1214' }}>
+                    Delete All Categories
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                    ⚠️ This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: '#FEF2F2' }}>
+                <i className="fa-solid fa-circle-exclamation mt-0.5" style={{ color: '#DC2626' }}></i>
+                <div>
+                  <p className="font-bold mb-2" style={{ color: '#DC2626', fontSize: '0.9375rem' }}>
+                    WARNING: You are about to delete ALL categories!
+                  </p>
+                  <p className="text-sm mb-2" style={{ color: '#0E1214' }}>
+                    This will permanently delete <strong>{categories.length} categories</strong> from the database.
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    This action is irreversible. All data will be lost forever.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB' }}>
+              <button
+                onClick={() => setShowDeleteAllModal(false)}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all"
+                style={{ 
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                  opacity: deletingAll ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#E5E7EB';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: deletingAll ? '#9CA3AF' : '#DC2626',
+                  color: '#FFFFFF'
+                }}
+                onMouseEnter={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  if (!deletingAll) e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                {deletingAll ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Deleting All...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can"></i>
+                    Yes, Delete All {categories.length} Categories
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
