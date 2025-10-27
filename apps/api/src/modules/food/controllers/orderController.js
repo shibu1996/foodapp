@@ -2,6 +2,7 @@ import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import Subscription from '../models/Subscription.js';
 import { calculateOneTimeDeliveryFee, calculateSubscriptionDeliveryFee } from '../../../shared/utils/distanceCalculator.js';
+import { applyCouponToOrder } from './couponController.js';
 
 // Place new order (User)
 export const placeOrder = async (req, res) => {
@@ -20,6 +21,8 @@ export const placeOrder = async (req, res) => {
       deliveryDate,
       paymentMethod,
       couponCode,
+      couponId,
+      couponDiscount = 0,
       specialInstructions,
     } = req.body;
 
@@ -182,6 +185,8 @@ export const placeOrder = async (req, res) => {
       paymentMethod,
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
       couponCode,
+      couponId,
+      couponDiscount,
       specialInstructions,
     });
 
@@ -273,6 +278,17 @@ export const placeOrder = async (req, res) => {
       } catch (subError) {
         console.error(`❌ Failed to create subscription for product ${subItem.productId}:`, subError.message);
         console.error('Subscription error details:', subError);
+      }
+    }
+
+    // Track coupon usage if coupon was applied
+    if (couponId && couponDiscount > 0) {
+      try {
+        await applyCouponToOrder(couponId, userId, order._id, couponDiscount);
+        console.log(`✅ Coupon usage tracked: ${couponCode}`);
+      } catch (couponError) {
+        console.error('❌ Failed to track coupon usage:', couponError);
+        // Don't fail the order if coupon tracking fails
       }
     }
 

@@ -15,6 +15,7 @@ import planRoutes from './modules/food/routes/planRoutes.js';
 import chargeRoutes from './modules/food/routes/chargeRoutes.js';
 import timeSlotRoutes from './modules/food/routes/timeSlotRoutes.js';
 import outletRoutes from './modules/food/routes/outletRoutes.js';
+import couponRoutes from './modules/food/routes/couponRoutes.js';
 import seedCharges from './modules/food/utils/seedCharges.js';
 
 dotenv.config();
@@ -62,6 +63,7 @@ app.use('/api/food/plans', planRoutes);
 app.use('/api/food/charges', chargeRoutes);
 app.use('/api/food/time-slots', timeSlotRoutes);
 app.use('/api/food/outlets', outletRoutes);
+app.use('/api/food/coupons', couponRoutes);
 
 // Basic health check
 app.get('/health', (req, res) => {

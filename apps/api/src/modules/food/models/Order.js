@@ -179,6 +179,15 @@ const OrderSchema = new Schema(
     },
     paymentId: String,
     couponCode: String,
+    couponId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Coupon',
+    },
+    couponDiscount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     specialInstructions: {
       type: String,
       maxlength: 500,

@@ -42,6 +42,7 @@ export default function CheckoutPage() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [couponError, setCouponError] = useState('');
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
   const [showAllAddresses, setShowAllAddresses] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [itemToRemove, setItemToRemove] = useState<number | null>(null);
@@ -141,6 +142,13 @@ export default function CheckoutPage() {
       loadCharges();
     }
   }, [cart]);
+
+  // Load available coupons
+  useEffect(() => {
+    if (cart.length > 0) {
+      loadAvailableCoupons();
+    }
+  }, [cart]);
   
   const loadCharges = async () => {
     try {
@@ -166,6 +174,34 @@ export default function CheckoutPage() {
     } catch (error) {
       console.error('❌ Error loading charges:', error);
       // If API fails, charges will remain empty (all FREE)
+    }
+  };
+
+  const loadAvailableCoupons = async () => {
+    try {
+      // Determine order type based on cart items
+      const hasSubscription = cart.some(item => item.type === 'subscription');
+      const hasOnetime = cart.some(item => item.type !== 'subscription');
+      const applicableFor = hasSubscription && !hasOnetime ? 'subscription' : 
+                           !hasSubscription && hasOnetime ? 'onetime' : 'all';
+
+      // Get user ID from localStorage
+      const userId = localStorage.getItem('userId');
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/food/coupons/active?applicableFor=${applicableFor}&userId=${userId || ''}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Show only top 3 coupons
+          setAvailableCoupons(data.data.slice(0, 3));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading coupons:', error);
+      setAvailableCoupons([]);
     }
   };
 
@@ -345,31 +381,58 @@ export default function CheckoutPage() {
     }, 0);
   };
 
-  const handleApplyCoupon = () => {
+  const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
       setCouponError('Please enter a coupon code');
       return;
     }
 
-    // Dummy coupon validation - replace with actual API call
-    const dummyCoupons = [
-      { code: 'SAVE10', discount: 10, type: 'percentage' },
-      { code: 'FLAT50', discount: 50, type: 'flat' },
-      { code: 'WELCOME20', discount: 20, type: 'percentage' },
-    ];
+    try {
+      // Determine order type
+      const hasSubscription = cart.some(item => item.type === 'subscription');
+      const hasOnetime = cart.some(item => item.type !== 'subscription');
+      const orderType = hasSubscription && !hasOnetime ? 'subscription' : 
+                       !hasSubscription && hasOnetime ? 'onetime' : 'all';
 
-    const coupon = dummyCoupons.find(c => c.code.toUpperCase() === couponCode.toUpperCase());
+      // Get user ID from localStorage
+      const userId = localStorage.getItem('userId');
 
-    if (coupon) {
-      setAppliedCoupon(coupon);
-      setCouponError('');
-      setSuccessMessage('Coupon applied successfully!');
-      setShowSuccessModal(true);
-      setTimeout(() => {
-        setShowSuccessModal(false);
-      }, 2000);
-    } else {
-      setCouponError('Invalid coupon code');
+      // Calculate current order amount
+      const orderAmount = calculateSubtotal();
+
+      const response = await fetch(`${API_BASE_URL}/api/food/coupons/validate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: couponCode,
+          userId: userId || undefined,
+          orderType,
+          orderAmount
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setAppliedCoupon({
+          ...data.data,
+          type: data.data.discountType
+        });
+        setCouponError('');
+        setSuccessMessage(`Coupon applied! You saved ₹${data.data.discountAmount}`);
+        setShowSuccessModal(true);
+        setTimeout(() => {
+          setShowSuccessModal(false);
+        }, 3000);
+      } else {
+        setCouponError(data.message || 'Invalid coupon code');
+        setAppliedCoupon(null);
+      }
+    } catch (error) {
+      console.error('Error applying coupon:', error);
+      setCouponError('Failed to apply coupon');
       setAppliedCoupon(null);
     }
   };
@@ -533,6 +596,8 @@ export default function CheckoutPage() {
         deliveryDate: new Date().toISOString(),
         paymentMethod: paymentMethod === 'cod' ? 'cod' : 'online',
         couponCode: appliedCoupon?.code || '',
+        couponId: appliedCoupon?.couponId || null,
+        couponDiscount: appliedCoupon?.discountAmount || 0,
         specialInstructions: ''
       };
 
@@ -720,11 +785,7 @@ export default function CheckoutPage() {
   const platformFee = calculatePlatformFee();
   const packagingCharge = calculatePackagingCharge();
   const tax = calculateTax();
-  const couponDiscount = appliedCoupon 
-    ? appliedCoupon.type === 'percentage' 
-      ? Math.round((subtotal * appliedCoupon.discount) / 100)
-      : appliedCoupon.discount
-    : 0;
+  const couponDiscount = appliedCoupon?.discountAmount || 0;
   const total = subtotal + deliveryFee + platformFee + packagingCharge + tax - couponDiscount;
 
   return (
@@ -1371,13 +1432,9 @@ export default function CheckoutPage() {
                       <i className="fa fa-sparkles mr-1" style={{ fontSize: '10px' }}></i>
                       Available Offers
                     </p>
-                    {[
-                      { code: 'SAVE10', discount: '10%' },
-                      { code: 'FLAT50', discount: '₹50' },
-                      { code: 'WELCOME20', discount: '20%' },
-                    ].map((coupon) => (
+                    {availableCoupons.length > 0 ? availableCoupons.map((coupon) => (
                       <button
-                        key={coupon.code}
+                        key={coupon._id}
                         onClick={() => {
                           setCouponCode(coupon.code);
                           setCouponError('');
@@ -1392,15 +1449,24 @@ export default function CheckoutPage() {
                           <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: '#E11D48' }}>
                             <i className="fa fa-percent" style={{ color: '#FFFFFF', fontSize: '10px' }}></i>
                           </div>
-                          <span className="text-xs font-bold" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
-                            {coupon.code}
-                          </span>
+                          <div className="flex-1">
+                            <span className="text-xs font-bold block" style={{ color: '#0E1214', fontFamily: 'Poppins, sans-serif' }}>
+                              {coupon.code}
+                            </span>
+                            <span className="text-xs" style={{ color: '#6B7280', fontFamily: 'Poppins, sans-serif' }}>
+                              {coupon.description}
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-sm font-bold" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
-                          {coupon.discount}
+                        <span className="text-sm font-bold whitespace-nowrap ml-2" style={{ color: '#E11D48', fontFamily: 'Poppins, sans-serif' }}>
+                          {coupon.discountType === 'percentage' ? `${coupon.discountValue}%` : `₹${coupon.discountValue}`}
                         </span>
                       </button>
-                    ))}
+                    )) : (
+                      <p className="text-xs text-center py-3" style={{ color: '#9CA3AF' }}>
+                        No coupons available
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
